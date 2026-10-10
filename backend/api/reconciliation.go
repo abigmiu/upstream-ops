@@ -10,8 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// errDashboardPending 对账总览尚未实现（S4）。
-var errDashboardPending = errors.New("对账总览尚未实现")
 
 // registerReconciliation 注册站长对账子系统的管理端接口。
 // 全部挂在 /api 鉴权组下（由 Register 统一加 AuthMiddleware）。

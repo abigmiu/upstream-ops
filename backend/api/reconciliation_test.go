@@ -178,3 +178,31 @@ func TestSnapshotAPI(t *testing.T) {
 		t.Fatalf("snapshots = %+v", out.Data)
 	}
 }
+
+func TestDashboardEndpoint(t *testing.T) {
+	r, _ := newReconciliationRouter(t)
+	w := doJSON(t, r, http.MethodPost, "/api/reconciliation/vendors", map[string]any{"name": "上游D"})
+	var created struct {
+		Data storage.Vendor `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &created)
+	doJSON(t, r, http.MethodPost, "/api/reconciliation/vendor-entries", map[string]any{
+		"vendor_id": created.Data.ID, "entry_type": "充值", "amount": 100, "actual_amount": 100,
+	})
+	w = doJSON(t, r, http.MethodGet, "/api/reconciliation/dashboard", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("dashboard status = %d body=%s", w.Code, w.Body.String())
+	}
+	var out struct {
+		Data struct {
+			Summary map[string]any `json:"summary"`
+			Vendors []any          `json:"vendors"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Data.Vendors) == 0 {
+		t.Fatalf("expected vendors in dashboard")
+	}
+}

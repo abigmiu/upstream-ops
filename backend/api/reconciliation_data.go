@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bejix/upstream-ops/backend/reconcile"
 	"github.com/bejix/upstream-ops/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -312,9 +313,18 @@ func getSelfUsers(c *gin.Context, d *Deps) {
 }
 
 // ---------------------------------------------------------------------------
-// 对账总览（S4 实现完整公式；此处先提供占位，返回基础汇总）
+// 对账总览
 // ---------------------------------------------------------------------------
 
 func reconciliationDashboard(c *gin.Context, d *Deps) {
-	fail(c, http.StatusNotImplemented, errDashboardPending)
+	rng := reconcile.Range{
+		StartDay: c.Query("start_date"),
+		EndDay:   c.Query("end_date"),
+	}
+	dash, err := reconcile.Build(d.Accounting.DB(), rng)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": dash})
 }
