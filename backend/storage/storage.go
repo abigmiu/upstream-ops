@@ -142,6 +142,22 @@ func AutoMigrate(db *gorm.DB) error {
 		&GatewayProvider{},
 		&GatewayUsageLog{},
 		&ModelPriceOverride{},
+		// 站长对账子系统（vendor reconciliation）。
+		&Vendor{},
+		&ReconciliationChannel{},
+		&ChannelBinding{},
+		&ChannelBindingHistory{},
+		&VendorLedgerEntry{},
+		&ThirdPartyEntry{},
+		&OperatingExpense{},
+		&VendorSnapshot{},
+		&UpstreamChannelBinding{},
+		&TopupLog{},
+		&DailyTopup{},
+		&ChannelUsageStat{},
+		&UserBalanceSnapshot{},
+		&SyncTaskLog{},
+		&AppSetting{},
 	); err != nil {
 		return err
 	}
