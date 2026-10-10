@@ -316,7 +316,7 @@ export interface SystemReconciliationConfig {
   sync_hour: number
   site_url: string
   token: string
-  user_id: number
+  user_id: string
   quota_per_usd: number
   non_cash_topup_log_ids?: number[]
 }

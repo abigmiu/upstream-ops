@@ -170,6 +170,12 @@ func (m *Manager) ApplyFromFile() (*ApplyResult, error) {
 		channelSvc.UpdateUpstreamConfig(cfg.Upstream)
 	}
 	gwCfg := cfg.Gateway.WithDefaults()
+	// 对账同步开关由 reconciliation 段决定：关掉或未配站点时清空 reconcileCron。
+	if !cfg.Reconciliation.Enabled || cfg.Reconciliation.SiteURL == "" {
+		cfg.Scheduler.ReconcileCron = ""
+	} else if cfg.Reconciliation.SyncCron != "" {
+		cfg.Scheduler.ReconcileCron = cfg.Reconciliation.SyncCron
+	}
 	if gatewaySvc != nil {
 		gatewaySvc.UpdateProxyConfig(cfg.Proxy)
 		gatewaySvc.UpdateUpstreamConfig(cfg.Upstream)

@@ -110,3 +110,41 @@ func TestRunRatesTriggersGatewayResort(t *testing.T) {
 		t.Fatalf("gateway resort calls = %d, want 1", gatewayResort.called)
 	}
 }
+
+type fakeReconcileSync struct {
+	calls int
+	err   error
+}
+
+func (f *fakeReconcileSync) RunIncremental(_ context.Context) error {
+	f.calls++
+	return f.err
+}
+
+func TestRunReconcileInvokesHook(t *testing.T) {
+	fake := &fakeReconcileSync{}
+	s := New(
+		config.SchedulerConfig{},
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		config.ProxyConfig{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	s.SetReconcileSync(fake)
+
+	s.runReconcile()
+
+	if fake.calls != 1 {
+		t.Fatalf("reconcile sync calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestRunReconcileNoHookIsSafe(t *testing.T) {
+	s := New(
+		config.SchedulerConfig{},
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		config.ProxyConfig{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	// 未注入 hook 时不应 panic。
+	s.runReconcile()
+}

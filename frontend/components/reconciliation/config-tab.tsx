@@ -15,7 +15,7 @@ const EMPTY: SystemReconciliationConfig = {
   sync_hour: 3,
   site_url: "",
   token: "",
-  user_id: 1,
+  user_id: "1",
   quota_per_usd: 500000,
   non_cash_topup_log_ids: [],
 }
@@ -116,9 +116,8 @@ export function ConfigTab() {
           </Field>
           <Field label="用户 ID" hint="New-Api-User 头，通常为 1">
             <Input
-              type="number"
               value={form.user_id}
-              onChange={(e) => set({ user_id: Number(e.target.value) })}
+              onChange={(e) => set({ user_id: e.target.value })}
             />
           </Field>
           <Field label="每美元额度" hint="NewAPI QUOTA_PER_USD，默认 500000">

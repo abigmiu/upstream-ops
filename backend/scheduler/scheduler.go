@@ -28,11 +28,17 @@ type Scheduler struct {
 	cipher        *crypto.Cipher
 	gatewayResort gatewayRateResortService
 	proxy         config.ProxyConfig
+	reconcileSync reconcileSyncService
 }
 
 // gatewayRateResortService 倍率扫描后重排开启了「渠道分组价格倍率重排」的网关组。
 type gatewayRateResortService interface {
 	ResortRoutesOnRateScan(ctx context.Context)
+}
+
+// reconcileSyncService 跑一次对账增量同步（实现见 reconcile 包与 api 层包装）。
+type reconcileSyncService interface {
+	RunIncremental(ctx context.Context) error
 }
 
 // New 构造调度器。
@@ -77,6 +83,11 @@ func (s *Scheduler) Start() error {
 			return err
 		}
 	}
+	if s.cfg.ReconcileCron != "" && s.reconcileSync != nil {
+		if _, err := s.cron.AddFunc(s.cfg.ReconcileCron, s.runReconcile); err != nil {
+			return err
+		}
+	}
 	if s.cfg.Retention.Cron != "" && s.hasRetention() {
 		if _, err := s.cron.AddFunc(s.cfg.Retention.Cron, s.runRetention); err != nil {
 			return err
@@ -86,10 +97,28 @@ func (s *Scheduler) Start() error {
 	s.log.Info("scheduler started",
 		"balanceCron", s.cfg.BalanceCron,
 		"rateCron", s.cfg.RateCron,
+		"reconcileCron", s.cfg.ReconcileCron,
 		"retentionCron", s.cfg.Retention.Cron,
 		"concurrency", s.cfg.Concurrency,
 	)
 	return nil
+}
+
+// SetReconcileSync 注入对账增量同步服务（在 Start 前调用）。
+func (s *Scheduler) SetReconcileSync(svc reconcileSyncService) {
+	s.reconcileSync = svc
+}
+
+// runReconcile 执行一次对账增量同步。
+func (s *Scheduler) runReconcile() {
+	if s.reconcileSync == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if err := s.reconcileSync.RunIncremental(ctx); err != nil {
+		s.log.Warn("reconcile incremental sync failed", "err", err)
+	}
 }
 
 // Stop 停止调度器。

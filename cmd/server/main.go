@@ -21,6 +21,7 @@ import (
 	"github.com/bejix/upstream-ops/backend/logger"
 	"github.com/bejix/upstream-ops/backend/monitor"
 	"github.com/bejix/upstream-ops/backend/notify"
+	"github.com/bejix/upstream-ops/backend/reconcile"
 	"github.com/bejix/upstream-ops/backend/runtimeconfig"
 	"github.com/bejix/upstream-ops/backend/scheduler"
 	"github.com/bejix/upstream-ops/backend/storage"
@@ -138,14 +139,29 @@ func main() {
 	schedulerFactory := func(scfg config.SchedulerConfig, pcfg config.ProxyConfig) *scheduler.Scheduler {
 		return scheduler.New(scfg, monitorSvc, monLogs, rates, notifies, announcements, captchas, cipher, gatewaySvc, pcfg, log)
 	}
+	// 对账同步开关：关掉或未配站点时清空 reconcileCron（与 runtime ApplyFromFile 一致）。
+	if !cfg.Reconciliation.Enabled || cfg.Reconciliation.SiteURL == "" {
+		cfg.Scheduler.ReconcileCron = ""
+	} else if cfg.Reconciliation.SyncCron != "" {
+		cfg.Scheduler.ReconcileCron = cfg.Reconciliation.SyncCron
+	}
 	sch := schedulerFactory(cfg.Scheduler, cfg.Proxy)
+	// 对账增量同步：配置从 runtime 热读，站点在设置页修改后即时生效。
+	var runtimeMgr *runtimeconfig.Manager
+	reconcileRunner := reconcile.NewRunner(accounting, func() config.ReconciliationConfig {
+		if runtimeMgr != nil {
+			return runtimeMgr.CurrentReconciliation()
+		}
+		return cfg.Reconciliation
+	})
+	sch.SetReconcileSync(reconcileRunner)
 	if err := sch.Start(); err != nil {
 		log.Error("start scheduler failed", "err", err)
 		os.Exit(1)
 	}
 	defer sch.Stop()
 
-	runtimeMgr := runtimeconfig.New(
+	runtimeMgr = runtimeconfig.New(
 		resolvedConfigPath,
 		cfg.Security.AppSecret,
 		log,
