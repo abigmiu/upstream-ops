@@ -289,10 +289,10 @@ func (a *Accounting) EnsureChannelForUsage(channelID uint, channelName string, s
 
 // UserBalanceInput 一条用户余额入参。
 type UserBalanceInput struct {
-	Username       string
+	Username        string
 	RemainingAmount float64
-	UsedAmount     float64
-	RequestCount   int
+	UsedAmount      float64
+	RequestCount    int
 }
 
 // SaveUserBalanceSnapshots 按 (username, day) 覆盖写入；capturedAt 更早不覆盖。

@@ -83,11 +83,11 @@ func (Vendor) TableName() string { return "vendors" }
 // channel_id 是自然主键（来自 NewAPI）；channel_id=0 是聚合哨兵，始终排除在列表外。
 // 注意：与 upstream-ops 已有的 Channel（上游账号）不同，这张表记录的是「你站的渠道」。
 type ReconciliationChannel struct {
-	ChannelID   uint      `gorm:"primaryKey" json:"channel_id"`
-	ChannelName string    `gorm:"size:256;not null" json:"channel_name"`
-	GroupName   string    `gorm:"size:256;not null;default:''" json:"group_name"`
-	IsActive    bool      `gorm:"not null;default:true" json:"is_active"`
-	FirstSeenAt time.Time `json:"first_seen_at"`
+	ChannelID    uint      `gorm:"primaryKey" json:"channel_id"`
+	ChannelName  string    `gorm:"size:256;not null" json:"channel_name"`
+	GroupName    string    `gorm:"size:256;not null;default:''" json:"group_name"`
+	IsActive     bool      `gorm:"not null;default:true" json:"is_active"`
+	FirstSeenAt  time.Time `json:"first_seen_at"`
 	LastSyncedAt time.Time `json:"last_synced_at"`
 }
 
@@ -202,16 +202,16 @@ func (UpstreamChannelBinding) TableName() string { return "upstream_channel_bind
 // TopupLog 站内充值日志。id 来自 NewAPI 日志 id（自然键）。
 // included_in_cash = 1 的才计入现金收入；included_in_cash_manual 标记被人工改过。
 type TopupLog struct {
-	ID                    uint      `gorm:"primaryKey" json:"id"`
-	Username              string    `gorm:"size:256;not null;default:''" json:"username"`
-	LogType               string    `gorm:"size:64;not null" json:"log_type"`
-	Amount                float64   `gorm:"not null" json:"amount"`
-	OccurredAt            time.Time `gorm:"not null;index" json:"occurred_at"`
-	IncludedInCash        bool      `gorm:"not null;default:true" json:"included_in_cash"`
-	IncludedInCashManual  bool      `gorm:"not null;default:false" json:"included_in_cash_manual"`
-	Note                  string    `gorm:"type:text;not null;default:''" json:"note"`
-	Content               string    `gorm:"type:text;not null;default:''" json:"content"`
-	CreatedAt             time.Time `json:"created_at"`
+	ID                   uint      `gorm:"primaryKey" json:"id"`
+	Username             string    `gorm:"size:256;not null;default:''" json:"username"`
+	LogType              string    `gorm:"size:64;not null" json:"log_type"`
+	Amount               float64   `gorm:"not null" json:"amount"`
+	OccurredAt           time.Time `gorm:"not null;index" json:"occurred_at"`
+	IncludedInCash       bool      `gorm:"not null;default:true" json:"included_in_cash"`
+	IncludedInCashManual bool      `gorm:"not null;default:false" json:"included_in_cash_manual"`
+	Note                 string    `gorm:"type:text;not null;default:''" json:"note"`
+	Content              string    `gorm:"type:text;not null;default:''" json:"content"`
+	CreatedAt            time.Time `json:"created_at"`
 }
 
 // TopupLog 的表名。为了避免与既有表冲突，使用 topup_logs。

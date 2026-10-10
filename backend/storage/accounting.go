@@ -1,9 +1,10 @@
 package storage
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -109,6 +110,83 @@ func (a *Accounting) EnsureDeletedVendor() (*Vendor, error) {
 		return a.FindVendorByName(DeletedVendorName)
 	}
 	return v, nil
+}
+
+// MergeVendorIntoDeleted 把某上游并入保留上游「已删除上游」：
+// 重映射所有引用，全量重算余额，删除源上游。
+func (a *Accounting) MergeVendorIntoDeleted(vendorID uint) error {
+	var deleted *Vendor
+	err := a.db.Transaction(func(tx *gorm.DB) error {
+		var source Vendor
+		if err := tx.First(&source, vendorID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("上游不存在")
+			}
+			return err
+		}
+		// 确保保留上游存在。
+		var target Vendor
+		if err := tx.Where("name = ?", DeletedVendorName).First(&target).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+			target = Vendor{Name: DeletedVendorName, Enabled: true}
+			if err := tx.Create(&target).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		if target.ID == source.ID {
+			return errors.New("不能把已删除上游合并到自己")
+		}
+		remaps := []struct {
+			model any
+			table string
+		}{
+			{&VendorLedgerEntry{}, "vendor_ledger_entries"},
+			{&VendorSnapshot{}, "vendor_snapshots"},
+			{&ChannelUsageStat{}, "channel_usage_stats"},
+			{&ChannelBinding{}, "channel_bindings"},
+			{&ChannelBindingHistory{}, "channel_binding_history"},
+			{&UpstreamChannelBinding{}, "upstream_channel_bindings"},
+		}
+		for _, r := range remaps {
+			if err := tx.Table(r.table).Where("vendor_id = ?", source.ID).Update("vendor_id", target.ID).Error; err != nil {
+				return err
+			}
+		}
+		if err := a.RebuildVendorLedgerBalancesFull(tx, target.ID); err != nil {
+			return err
+		}
+		if err := tx.Delete(&Vendor{}, source.ID).Error; err != nil {
+			return err
+		}
+		deleted = &target
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	_ = deleted
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Self usernames（运营者自己的账号名单，KV）
+// ---------------------------------------------------------------------------
+
+const selfUsersKey = "users.selfUsernames"
+
+// GetSelfUsernames 返回运营者自用账号集合。
+func (a *Accounting) GetSelfUsernames() (map[string]bool, error) {
+	raw, err := a.GetSetting(selfUsersKey, "[]")
+	if err != nil {
+		return nil, err
+	}
+	return parseStringArray(raw), nil
+}
+
+// SetSelfUsernames 保存运营者自用账号名单（JSON 数组）。
+func (a *Accounting) SetSelfUsernames(usernames []string) error {
+	return a.SetSetting(selfUsersKey, jsonStringArray(usernames))
 }
 
 // ---------------------------------------------------------------------------
@@ -420,4 +498,34 @@ func (a *Accounting) ListOperatingExpenses() ([]OperatingExpense, error) {
 	return out, err
 }
 
-var _ = fmt.Sprintf
+// parseStringArray 解析 JSON 字符串数组，忽略非法内容。
+func parseStringArray(raw string) map[string]bool {
+	out := map[string]bool{}
+	var arr []string
+	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+		return out
+	}
+	for _, s := range arr {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out[s] = true
+		}
+	}
+	return out
+}
+
+// jsonStringArray 把字符串数组编码为 JSON（去空、去重、保序）。
+func jsonStringArray(items []string) string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		s = strings.TrimSpace(s)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}

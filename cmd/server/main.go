@@ -106,6 +106,10 @@ func main() {
 	gatewayProviders := storage.NewGatewayProviders(db)
 	gatewayUsage := storage.NewGatewayUsageLogs(db)
 	modelPrices := storage.NewModelPriceOverrides(db)
+	accounting := storage.NewAccounting(db)
+	if _, err := accounting.EnsureDeletedVendor(); err != nil {
+		log.Warn("ensure deleted vendor failed", "err", err)
+	}
 
 	channelSvc := channel.NewService(channels, authSessions, captchas, rates, monLogs, cipher)
 	channelSvc.UpdateProxyConfig(cfg.Proxy)
@@ -192,6 +196,7 @@ func main() {
 		GatewayKeys:   gatewayKeys,
 		GatewayUsage:  gatewayUsage,
 		ModelPrices:   modelPrices,
+		Accounting:    accounting,
 		Log:           log,
 		Frontend:      frontendFS,
 	})
