@@ -26,6 +26,29 @@ type Config struct {
 	Gateway       GatewayConfig       `mapstructure:"gateway" yaml:"gateway" json:"gateway"`
 	Pricing       PricingConfig       `mapstructure:"pricing" yaml:"pricing" json:"pricing"`
 	Log           LogConfig           `mapstructure:"log" yaml:"log" json:"log"`
+	// Reconciliation 站长对账子系统的 NewAPI 同步配置。
+	Reconciliation ReconciliationConfig `mapstructure:"reconciliation" yaml:"reconciliation" json:"reconciliation"`
+}
+
+// ReconciliationConfig 对账子系统的 NewAPI 站点同步配置。
+//
+// 用于从「你站内的 NewAPI」拉取充值日志 / 渠道列表 / 渠道消费 / 用户余额。
+type ReconciliationConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled" json:"enabled"`
+	// SyncCron 增量同步的 cron（6 字段含秒）。默认每 10 分钟。
+	SyncCron string `mapstructure:"syncCron" yaml:"syncCron" json:"syncCron"`
+	// SyncHour 北京时间每天此小时之前不自动同步（与 Python 版 app.syncHour 对齐）。
+	SyncHour int `mapstructure:"syncHour" yaml:"syncHour" json:"syncHour"`
+	// SiteURL NewAPI 站点根地址，例如 https://ai.wewont.top
+	SiteURL string `mapstructure:"siteUrl" yaml:"siteUrl" json:"siteUrl"`
+	// Token NewAPI 访问 token（Authorization 头）。
+	Token string `mapstructure:"token" yaml:"token" json:"token"`
+	// UserID NewAPI 用户 id（New-Api-User 头）。
+	UserID string `mapstructure:"userId" yaml:"userId" json:"userId"`
+	// QuotaPerUSD 额度换算：quota / QuotaPerUSD = 美元。默认 500000。
+	QuotaPerUSD float64 `mapstructure:"quotaPerUsd" yaml:"quotaPerUsd" json:"quotaPerUsd"`
+	// NonCashTopupLogIDs 不计入现金的充值日志 id（例如自己后台生成的兑换码）。
+	NonCashTopupLogIDs []int64 `mapstructure:"nonCashTopupLogIds" yaml:"nonCashTopupLogIds" json:"nonCashTopupLogIds"`
 }
 
 type AppConfig struct {
@@ -467,6 +490,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.retention.balanceSnapshotsDays", 90)
 	v.SetDefault("scheduler.retention.notificationLogsDays", 90)
 	v.SetDefault("scheduler.retention.announcementsDays", 90)
+
+	// 对账子系统：默认关闭，配置站点后手动开启。增量同步每 10 分钟。
+	v.SetDefault("reconciliation.enabled", false)
+	v.SetDefault("reconciliation.syncCron", "23 */10 * * * *")
+	v.SetDefault("reconciliation.syncHour", 3)
+	v.SetDefault("reconciliation.quotaPerUsd", 500000)
 
 	v.SetDefault("auth.enabled", false)
 	v.SetDefault("auth.username", "admin")

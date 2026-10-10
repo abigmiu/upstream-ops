@@ -29,9 +29,10 @@ type Manager struct {
 	schedulerFactory SchedulerFactory
 	auth             *auth.Service
 	scheduler        *scheduler.Scheduler
-	proxyConfig      config.ProxyConfig
-	upstreamConfig   config.UpstreamConfig
-	gatewayConfig    config.GatewayConfig
+	proxyConfig          config.ProxyConfig
+	upstreamConfig       config.UpstreamConfig
+	gatewayConfig        config.GatewayConfig
+	reconciliationConfig config.ReconciliationConfig
 }
 
 type ApplyResult struct {
@@ -91,6 +92,12 @@ func (m *Manager) CurrentUpstream() config.UpstreamConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.upstreamConfig
+}
+
+func (m *Manager) CurrentReconciliation() config.ReconciliationConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.reconciliationConfig
 }
 
 func (m *Manager) CurrentGateway() config.GatewayConfig {
@@ -181,6 +188,7 @@ func (m *Manager) ApplyFromFile() (*ApplyResult, error) {
 	m.proxyConfig = cfg.Proxy
 	m.upstreamConfig = cfg.Upstream.WithDefaults()
 	m.gatewayConfig = gwCfg
+	m.reconciliationConfig = cfg.Reconciliation
 	m.mu.Unlock()
 
 	if oldScheduler != nil {

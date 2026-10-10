@@ -35,6 +35,25 @@ func (a *Accounting) SetSetting(key, value string) error {
 	}).Create(&s).Error
 }
 
+// syncCursorKey 增量同步游标（上次成功窗口结束时间，RFC3339）。
+const syncCursorKey = "sync.lastSuccessEnd"
+
+// SyncCursor 返回增量同步起点；无记录时默认「当前时间往前 1 小时」。
+func (a *Accounting) SyncCursor() time.Time {
+	raw, err := a.GetSetting(syncCursorKey, "")
+	if err == nil && raw != "" {
+		if t, e := time.Parse(time.RFC3339, raw); e == nil {
+			return t
+		}
+	}
+	return time.Now().In(Shanghai).Add(-time.Hour)
+}
+
+// SetSyncCursor 记录增量同步游标。
+func (a *Accounting) SetSyncCursor(t time.Time) {
+	_ = a.SetSetting(syncCursorKey, t.In(Shanghai).Format(time.RFC3339))
+}
+
 // ---------------------------------------------------------------------------
 // Topup logs（站内充值日志）
 // ---------------------------------------------------------------------------

@@ -63,6 +63,12 @@ func registerReconciliation(g *gin.RouterGroup, d *Deps) {
 	// 自助用户标记
 	rg.POST("/settings/self-users", func(c *gin.Context) { saveSelfUsers(c, d) })
 	rg.GET("/settings/self-users", func(c *gin.Context) { getSelfUsers(c, d) })
+
+	// NewAPI 同步
+	rg.POST("/sync/channels", func(c *gin.Context) { syncChannelsHandler(c, d) })
+	rg.POST("/sync/range", func(c *gin.Context) { syncRangeHandler(c, d) })
+	rg.POST("/sync/incremental", func(c *gin.Context) { syncIncrementalHandler(c, d) })
+	rg.POST("/sync/test", func(c *gin.Context) { testNewAPIHandler(c, d) })
 }
 
 // ---------------------------------------------------------------------------
