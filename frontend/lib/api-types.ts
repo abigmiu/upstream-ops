@@ -310,6 +310,17 @@ export interface SystemGatewayConfig {
   streamMaxLineBytes: number
 }
 
+export interface SystemReconciliationConfig {
+  enabled: boolean
+  sync_cron: string
+  sync_hour: number
+  site_url: string
+  token: string
+  user_id: number
+  quota_per_usd: number
+  non_cash_topup_log_ids?: number[]
+}
+
 export interface SystemConfig {
   app: AppConfig
   auth: SystemAuthConfig
@@ -318,6 +329,7 @@ export interface SystemConfig {
   proxy: SystemProxyConfig
   upstream: SystemUpstreamConfig
   gateway: SystemGatewayConfig
+  reconciliation: SystemReconciliationConfig
 }
 
 export interface SystemConfigResponse {
@@ -915,4 +927,227 @@ export interface ModelDefaultPrice {
   output_price_per_token: number
   cache_creation_price_per_token: number
   cache_read_price_per_token: number
+}
+
+// ---------------------------------------------------------------------------
+// 对账子系统（reconciliation）—— 与 backend/storage/accounting_model.go 对齐
+// ---------------------------------------------------------------------------
+
+export type LedgerEntryType = "充值" | "补款" | "退款" | "扣减"
+export type ThirdPartyEntryType = "提现" | "扣减" | "充值"
+
+export interface Vendor {
+  id: number
+  name: string
+  alias: string
+  enabled: boolean
+  note: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ReconciliationChannel {
+  channel_id: number
+  channel_name: string
+  group_name: string
+  is_active: boolean
+  first_seen_at: string
+  last_synced_at: string
+}
+
+export interface ChannelBindingRow {
+  id: number
+  channel_id: number
+  channel_name: string
+  group_name: string
+  vendor_id: number
+  vendor_name: string
+  effective_from: string
+  effective_to: string | null
+  note: string
+}
+
+export interface ChannelBindingHistoryRow {
+  id: number
+  channel_id: number
+  channel_name: string
+  vendor_id: number
+  vendor_name: string
+  effective_from: string
+  effective_to: string | null
+  note: string
+  change_type: string
+  changed_at: string
+}
+
+export interface UpstreamChannelBindingRow {
+  id: number
+  vendor_id: number
+  vendor_name: string
+  upstream_channel_id: string
+  upstream_channel_name: string
+  note: string
+}
+
+export interface VendorLedgerEntry {
+  id: number
+  vendor_id: number
+  vendor_name: string
+  entry_type: LedgerEntryType
+  amount: number
+  actual_amount: number
+  balance_before: number
+  balance_after: number
+  occurred_at: string
+  note: string
+  source_type: string
+}
+
+export interface VendorSnapshotRow {
+  id: number
+  vendor_id: number
+  vendor_name: string
+  used_amount: number
+  current_balance: number
+  day: string
+  captured_at: string
+  note: string
+  previous_balance?: number | null
+  previous_captured_at?: string | null
+}
+
+export interface ThirdPartyEntry {
+  id: number
+  platform_name: string
+  entry_type: ThirdPartyEntryType
+  amount: number
+  occurred_at: string
+  note: string
+}
+
+export interface OperatingExpense {
+  id: number
+  category: string
+  amount: number
+  occurred_at: string
+  note: string
+}
+
+export interface TopupLog {
+  id: number
+  username: string
+  log_type: string
+  amount: number
+  occurred_at: string
+  included_in_cash: boolean
+  included_in_cash_manual: boolean
+  note: string
+  content: string
+}
+
+export interface DailyTopup {
+  day: string
+  amount: number
+}
+
+export interface ChannelUsageRow {
+  id: number
+  channel_id: number
+  channel_name: string
+  vendor_id: number
+  vendor_name: string
+  day: string
+  amount: number
+  start_at: string
+  end_at: string
+}
+
+export interface UserBalanceSnapshot {
+  id: number
+  username: string
+  remaining_amount: number
+  used_amount: number
+  request_count: number
+  is_self: boolean
+  day: string
+  captured_at: string
+}
+
+export interface SyncTaskLog {
+  id: number
+  day: string
+  job_name: string
+  category: string
+  source: string
+  status: string
+  window_start?: string | null
+  window_end?: string | null
+  topup_count: number
+  usage_count: number
+  user_balance_count: number
+  message: string
+  started_at: string
+  completed_at: string
+}
+
+export interface ReconVendorRow {
+  id: number
+  name: string
+  alias: string
+  note: string
+  recharge: number
+  actual_recharge: number
+  refund: number
+  actual_refund: number
+  deduction: number
+  actual_deduction: number
+  used_amount: number
+  current_balance: number
+  channel_usage: number
+  rechargeNet: number
+  actualRechargeNet: number
+  theoreticalBalance: number
+  ledgerDrift: number
+  theoreticalSpread: number
+  actualProfit: number
+}
+
+export interface ReconUserBalance {
+  capturedAt: string | null
+  totalRemaining: number
+  totalUsed: number
+  selfRemaining: number
+  selfUsed: number
+  externalRemaining: number
+  externalUsed: number
+  selfUserCount: number
+  userCount: number
+}
+
+export interface ReconSummary {
+  total_topup: number
+  total_withdrawal: number
+  total_usage: number
+  total_operating_expense: number
+  total_vendor_balance: number
+  total_vendor_used: number
+  total_actual_recharge_net: number
+  total_actual_profit: number
+  total_self_topup: number
+  total_external_topup: number
+  total_user_remaining: number
+  total_user_used: number
+  total_self_remaining: number
+  total_self_used: number
+  total_external_remaining: number
+  total_external_used: number
+  estimated_realized_profit: number
+  estimated_settlement_profit: number
+}
+
+export interface ReconDashboard {
+  summary: ReconSummary
+  vendors: ReconVendorRow[]
+  range: { startDate: string | null; endDate: string | null }
+  userBalance: ReconUserBalance
 }

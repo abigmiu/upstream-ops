@@ -21,6 +21,21 @@ import type {
   RateSnapshot,
   SystemConfigResponse,
   UpstreamAnnouncementPage,
+  ChannelBindingRow,
+  ChannelBindingHistoryRow,
+  ChannelUsageRow,
+  DailyTopup,
+  OperatingExpense,
+  ReconDashboard,
+  ReconciliationChannel,
+  SyncTaskLog,
+  ThirdPartyEntry,
+  TopupLog,
+  UpstreamChannelBindingRow,
+  UserBalanceSnapshot,
+  Vendor,
+  VendorLedgerEntry,
+  VendorSnapshotRow,
 } from "@/lib/api-types"
 
 export interface QueryState<T> {
@@ -315,4 +330,76 @@ export function useCaptchaConfigs(enabled = true) {
 
 export function useSystemConfig() {
   return useApi<SystemConfigResponse>("/settings/config")
+}
+
+// ---------------------------------------------------------------------------
+// 对账子系统 hooks
+// ---------------------------------------------------------------------------
+
+export function useReconDashboard(startDate?: string, endDate?: string) {
+  const qs = new URLSearchParams()
+  if (startDate) qs.set("start_date", startDate)
+  if (endDate) qs.set("end_date", endDate)
+  const suffix = qs.toString() ? `?${qs}` : ""
+  return useApi<ReconDashboard>(`/reconciliation/dashboard${suffix}`)
+}
+
+export function useVendors() {
+  return useApi<Vendor[]>("/reconciliation/vendors")
+}
+
+export function useChannelBindings() {
+  return useApi<ChannelBindingRow[]>("/reconciliation/channel-bindings")
+}
+
+export function useChannelBindingHistory() {
+  return useApi<ChannelBindingHistoryRow[]>("/reconciliation/channel-binding-history")
+}
+
+export function useUpstreamChannelBindings() {
+  return useApi<UpstreamChannelBindingRow[]>("/reconciliation/upstream-channel-bindings")
+}
+
+export function useReconciliationChannels() {
+  return useApi<ReconciliationChannel[]>("/reconciliation/channels")
+}
+
+export function useVendorEntries() {
+  return useApi<VendorLedgerEntry[]>("/reconciliation/vendor-entries")
+}
+
+export function useVendorSnapshots() {
+  return useApi<VendorSnapshotRow[]>("/reconciliation/vendor-snapshots")
+}
+
+export function useThirdPartyEntries() {
+  return useApi<ThirdPartyEntry[]>("/reconciliation/third-party-entries")
+}
+
+export function useOperatingExpenses() {
+  return useApi<OperatingExpense[]>("/reconciliation/operating-expenses")
+}
+
+export function useTopupLogs() {
+  return useApi<TopupLog[]>("/reconciliation/topup-logs")
+}
+
+export function useDailyTopups() {
+  return useApi<DailyTopup[]>("/reconciliation/daily-topups")
+}
+
+export function useChannelUsageStats() {
+  return useApi<ChannelUsageRow[]>("/reconciliation/channel-usage-stats")
+}
+
+export function useUserBalanceSnapshots() {
+  return useApi<UserBalanceSnapshot[]>("/reconciliation/user-balance-snapshots")
+}
+
+export function useSyncTaskLogs() {
+  return useApi<SyncTaskLog[]>("/reconciliation/sync-task-logs")
+}
+
+export function useSelfUsers() {
+  return useApi<string[]>("/reconciliation/settings/self-users")
 }

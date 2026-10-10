@@ -9,6 +9,7 @@ import {
   Menu,
   Moon,
   Network,
+  Receipt,
   RefreshCw,
   Settings,
   Sun,
@@ -211,6 +212,10 @@ export function MonitorHeader() {
                 <Network className="size-4" />
                 请求网关
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/reconciliation")}>
+                <Receipt className="size-4" />
+                对账中心
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate("/settings")}>
                 <Settings className="size-4" />
                 系统设置
@@ -275,6 +280,23 @@ export function MonitorHeader() {
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
                 {"请求网关"}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => navigate("/reconciliation")}
+                  className="size-8 border-border bg-background text-foreground hover:bg-muted"
+                  aria-label="对账中心"
+                >
+                  <Receipt className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                {"对账中心"}
               </TooltipContent>
             </Tooltip>
 

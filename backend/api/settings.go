@@ -8,23 +8,25 @@ import (
 )
 
 type settingsConfigView struct {
-	App           config.AppConfig           `json:"app"`
-	Auth          config.AuthConfig          `json:"auth"`
-	Scheduler     config.SchedulerConfig     `json:"scheduler"`
-	Notifications config.NotificationsConfig `json:"notifications"`
-	Proxy         config.ProxyConfig         `json:"proxy"`
-	Upstream      config.UpstreamConfig      `json:"upstream"`
-	Gateway       config.GatewayConfig       `json:"gateway"`
+	App            config.AppConfig            `json:"app"`
+	Auth           config.AuthConfig           `json:"auth"`
+	Scheduler      config.SchedulerConfig      `json:"scheduler"`
+	Notifications  config.NotificationsConfig  `json:"notifications"`
+	Proxy          config.ProxyConfig          `json:"proxy"`
+	Upstream       config.UpstreamConfig       `json:"upstream"`
+	Gateway        config.GatewayConfig        `json:"gateway"`
+	Reconciliation config.ReconciliationConfig `json:"reconciliation"`
 }
 
 type settingsConfigInput struct {
-	App           config.AppConfig           `json:"app" binding:"required"`
-	Auth          config.AuthConfig          `json:"auth" binding:"required"`
-	Scheduler     config.SchedulerConfig     `json:"scheduler" binding:"required"`
-	Notifications config.NotificationsConfig `json:"notifications" binding:"required"`
-	Proxy         config.ProxyConfig         `json:"proxy"`
-	Upstream      config.UpstreamConfig      `json:"upstream"`
-	Gateway       config.GatewayConfig       `json:"gateway"`
+	App            config.AppConfig            `json:"app" binding:"required"`
+	Auth           config.AuthConfig           `json:"auth" binding:"required"`
+	Scheduler      config.SchedulerConfig      `json:"scheduler" binding:"required"`
+	Notifications  config.NotificationsConfig  `json:"notifications" binding:"required"`
+	Proxy          config.ProxyConfig          `json:"proxy"`
+	Upstream       config.UpstreamConfig       `json:"upstream"`
+	Gateway        config.GatewayConfig        `json:"gateway"`
+	Reconciliation config.ReconciliationConfig `json:"reconciliation"`
 }
 
 func registerSettings(g *gin.RouterGroup, d *Deps) {
@@ -49,9 +51,10 @@ func getSettingsConfig(c *gin.Context, d *Deps) {
 				Auth:          cfg.Auth,
 				Scheduler:     cfg.Scheduler,
 				Notifications: cfg.Notifications,
-				Proxy:         cfg.Proxy,
-				Upstream:      cfg.Upstream.WithDefaults(),
-				Gateway:       cfg.Gateway.WithDefaults(),
+				Proxy:          cfg.Proxy,
+				Upstream:       cfg.Upstream.WithDefaults(),
+				Gateway:        cfg.Gateway.WithDefaults(),
+				Reconciliation: cfg.Reconciliation,
 			},
 		},
 	})
@@ -79,6 +82,7 @@ func saveSettingsConfig(c *gin.Context, d *Deps) {
 	cfg.Proxy = in.Proxy
 	cfg.Upstream = in.Upstream.WithDefaults()
 	cfg.Gateway = in.Gateway.WithDefaults()
+	cfg.Reconciliation = in.Reconciliation
 
 	if err := config.Save(path, cfg); err != nil {
 		fail(c, http.StatusInternalServerError, err)
