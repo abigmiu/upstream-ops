@@ -192,8 +192,12 @@ type ChannelUsageInput struct {
 }
 
 // SaveChannelUsageStats 写入站内归属消费。
-//   - mode="replace"：整天补数，先删当天再整批覆盖。
-//   - mode="accumulate"：窗口同步，同一窗口重试幂等（end_at 相等不累加）。
+//   - mode="replace"：整天覆盖，先删当天再整批写入绝对值（幂等，可反复执行）。
+//   - mode="accumulate"：窗口累加，仅当新窗口 end_at 更大时累加。
+//
+// 注意 accumulate 的守卫只保证「end_at 完全相同的重试」幂等；若新窗口是旧窗口的**超集**
+// （游标未推进时重跑、或人为传入更大区间），重叠段会被整段再加一次。增量同步因此改用
+// replace 按自然日绝对重算，取舍详见 reconcile.SyncWindow 的注释。
 //
 // 无绑定的渠道会被跳过。返回写入数。
 func (a *Accounting) SaveChannelUsageStats(rows []ChannelUsageInput, mode string) (int, error) {

@@ -124,7 +124,22 @@ func (s *SyncService) SyncChannelsQuiet(ctx context.Context) error {
 }
 
 // SyncWindow 同步一个时间窗口：充值日志 + 各渠道消费。
-// usageMode 决定消费写入方式（accumulate / replace）。
+//
+// usageMode:
+//   - "replace"     按自然日绝对覆盖（增量同步与补数都走这个）
+//   - "accumulate"  窗口增量累加（保留给「单日内细分窗口」语义；当前调用方已不再使用）
+//
+// 为什么增量同步用 replace 而不是 accumulate —— 游标与写入不是一个事务，累加语义会重复计入：
+//   - 游标 SetSyncCursor 写失败会被静默吞掉（存储层是 `_ = SetSetting`），cron 又没有
+//     SkipIfStillRunning 防重入，于是「同一游标被两次读取」和「行写成功但游标没推进」都可能发生；
+//     后者的下一次窗口是上一次的**超集**。
+//   - accumulate 的幂等守卫只认「end_at 完全相同」的重试（见 storage.SaveChannelUsageStats），
+//     超集会被当成新窗口把整段再加一次 → 重叠区间金额翻倍。
+//   - 改成按自然日 replace 写「绝对值」后，结果与游标是否推进、窗口是否重叠、是否并发无关：
+//     重复/重试/并发都不会重复累加，游标停滞时还能顺带自愈缺口。
+//
+// 因此增量同步固定「从游标所在自然日 0 点起、mode=replace」
+// （见 reconcile.Runner.RunIncremental 与 api.syncIncrementalHandler）。
 //
 // 用户余额快照已从中剥离（见 SyncUserBalance）：余额只需每天采一次，
 // 跟随高频窗口同步会既浪费请求、又把「存量余额」混进窗口区间语义里。
