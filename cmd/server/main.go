@@ -136,16 +136,6 @@ func main() {
 	dispatcher.UpdateProxyConfig(cfg.Proxy)
 	monitorSvc := monitor.NewService(channels, announcements, rates, monLogs, channelSvc, dispatcher, log)
 
-	schedulerFactory := func(scfg config.SchedulerConfig, pcfg config.ProxyConfig) *scheduler.Scheduler {
-		return scheduler.New(scfg, monitorSvc, monLogs, rates, notifies, announcements, captchas, cipher, gatewaySvc, pcfg, log)
-	}
-	// 对账同步开关：关掉或未配站点时清空 reconcileCron（与 runtime ApplyFromFile 一致）。
-	if !cfg.Reconciliation.Enabled || cfg.Reconciliation.SiteURL == "" {
-		cfg.Scheduler.ReconcileCron = ""
-	} else if cfg.Reconciliation.SyncCron != "" {
-		cfg.Scheduler.ReconcileCron = cfg.Reconciliation.SyncCron
-	}
-	sch := schedulerFactory(cfg.Scheduler, cfg.Proxy)
 	// 对账增量同步：配置从 runtime 热读，站点在设置页修改后即时生效。
 	var runtimeMgr *runtimeconfig.Manager
 	reconcileRunner := reconcile.NewRunner(accounting, func() config.ReconciliationConfig {
@@ -154,9 +144,25 @@ func main() {
 		}
 		return cfg.Reconciliation
 	})
-	sch.SetReconcileSync(reconcileRunner)
 	// 上游余额快照自动采集：把监控采到的余额落成对账的每日快照，免去手工记录。
-	sch.SetVendorSnapshotService(reconcile.NewVendorSnapshotService(accounting, channels))
+	vendorSnapSvc := reconcile.NewVendorSnapshotService(accounting, channels)
+
+	// runtime 应用配置（ApplyFromFile）时会用本工厂重建一个 scheduler，因此这两个服务
+	// 必须在工厂内部注入：否则重建出的 scheduler 拿不到 reconcileSync / vendorSnap，
+	// 对账 cron 与余额快照 cron 会在每次「保存并应用」后静默丢失。
+	schedulerFactory := func(scfg config.SchedulerConfig, pcfg config.ProxyConfig) *scheduler.Scheduler {
+		s := scheduler.New(scfg, monitorSvc, monLogs, rates, notifies, announcements, captchas, cipher, gatewaySvc, pcfg, log)
+		s.SetReconcileSync(reconcileRunner)
+		s.SetVendorSnapshotService(vendorSnapSvc)
+		return s
+	}
+	// 对账同步开关：关掉或未配站点时清空 reconcileCron（与 runtime ApplyFromFile 一致）。
+	if !cfg.Reconciliation.Enabled || cfg.Reconciliation.SiteURL == "" {
+		cfg.Scheduler.ReconcileCron = ""
+	} else if cfg.Reconciliation.SyncCron != "" {
+		cfg.Scheduler.ReconcileCron = cfg.Reconciliation.SyncCron
+	}
+	sch := schedulerFactory(cfg.Scheduler, cfg.Proxy)
 	if err := sch.Start(); err != nil {
 		log.Error("start scheduler failed", "err", err)
 		os.Exit(1)

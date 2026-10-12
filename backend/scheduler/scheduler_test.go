@@ -148,3 +148,48 @@ func TestRunReconcileNoHookIsSafe(t *testing.T) {
 	// 未注入 hook 时不应 panic。
 	s.runReconcile()
 }
+
+type fakeVendorSnapshot struct {
+	calls int
+}
+
+func (f *fakeVendorSnapshot) SyncFromMonitoring() (int, error) {
+	f.calls++
+	return 1, nil
+}
+
+// 只有注入了服务时，对账 / 余额快照两个 cron 才会被注册。
+// 这是 main.go 与 runtime 重建 scheduler 时必须重新注入服务的契约：
+// 漏注入不会报错，但对应的定时任务会静默消失（历史 bug）。
+func TestStartRegistersCronsOnlyWhenServiceInjected(t *testing.T) {
+	cfg := config.SchedulerConfig{
+		ReconcileCron:      "0 9 * * * *",
+		VendorSnapshotCron: "50 */15 * * * *",
+	}
+	newSch := func() *Scheduler {
+		return New(cfg, nil, nil, nil, nil, nil, nil, nil, nil,
+			config.ProxyConfig{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}
+
+	// 未注入服务：两个 cron 都不注册。
+	bare := newSch()
+	if err := bare.Start(); err != nil {
+		t.Fatalf("start bare: %v", err)
+	}
+	if n := len(bare.cron.Entries()); n != 0 {
+		t.Fatalf("entries without services = %d, want 0", n)
+	}
+	bare.Stop()
+
+	// 注入服务后：两个 cron 都注册。
+	bound := newSch()
+	bound.SetReconcileSync(&fakeReconcileSync{})
+	bound.SetVendorSnapshotService(&fakeVendorSnapshot{})
+	if err := bound.Start(); err != nil {
+		t.Fatalf("start bound: %v", err)
+	}
+	if n := len(bound.cron.Entries()); n != 2 {
+		t.Fatalf("entries with services = %d, want 2", n)
+	}
+	bound.Stop()
+}
