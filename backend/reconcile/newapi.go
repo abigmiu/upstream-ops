@@ -110,6 +110,7 @@ type RemoteChannel struct {
 	ChannelID   uint
 	ChannelName string
 	GroupName   string
+	Tag         string
 }
 
 func (c *NewAPIClient) fetchChannels(ctx context.Context) ([]RemoteChannel, error) {
@@ -129,6 +130,7 @@ func (c *NewAPIClient) fetchChannels(ctx context.Context) ([]RemoteChannel, erro
 					ID    jsonInt `json:"id"`
 					Name  string  `json:"name"`
 					Group string  `json:"group"`
+					Tag   string  `json:"tag"`
 				} `json:"items"`
 			} `json:"data"`
 		}
@@ -140,6 +142,7 @@ func (c *NewAPIClient) fetchChannels(ctx context.Context) ([]RemoteChannel, erro
 				ChannelID:   uint(it.ID),
 				ChannelName: it.Name,
 				GroupName:   it.Group,
+				Tag:         it.Tag,
 			})
 		}
 		if len(resp.Data.Items) < pageSize {

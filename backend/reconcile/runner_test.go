@@ -20,7 +20,7 @@ func newFakeNewAPI(t *testing.T) *httptest.Server {
 		_, _ = w.Write([]byte(body))
 	}
 	mux.HandleFunc("/api/channel/", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, `{"success":true,"data":{"total":2,"items":[{"id":1,"name":"渠道A","group":"默认"},{"id":2,"name":"渠道B","group":"默认"}]}}`)
+		writeJSON(w, `{"success":true,"data":{"total":2,"items":[{"id":1,"name":"渠道5-【GPT】 Pro","group":"uo-5-17","tag":"upstream-ops-managed"},{"id":2,"name":"渠道B","group":"默认","tag":""}]}}`)
 	})
 	mux.HandleFunc("/api/log/stat", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, `{"success":true,"data":{"total":0,"items":[]}}`)
@@ -113,5 +113,45 @@ func TestRunnerIncrementalSyncsAgainstFakeSite(t *testing.T) {
 	// 游标应推进到接近当前时间。
 	if cur := acc.SyncCursor(); cur.IsZero() {
 		t.Fatalf("sync cursor not advanced")
+	}
+}
+
+// 增量同步会为托管渠道自动建立归属（端到端：拉渠道 → 解析 group → 绑定）。
+func TestRunnerAutoBindsManagedChannels(t *testing.T) {
+	db := newDB(t)
+	acc := storage.NewAccounting(db)
+	srv := newFakeNewAPI(t)
+
+	// 预先建立「监控渠道5 → vendor」映射（手工维护的那一步）。
+	v := &storage.Vendor{Name: "100hub", Enabled: true}
+	if err := acc.CreateVendor(v); err != nil {
+		t.Fatalf("vendor: %v", err)
+	}
+	if err := acc.BindUpstreamChannel(v.ID, "5", "100hub", ""); err != nil {
+		t.Fatalf("bind upstream: %v", err)
+	}
+
+	cfg := config.ReconciliationConfig{
+		Enabled: true, SiteURL: srv.URL, Token: "tok", UserID: "1", QuotaPerUSD: 500000,
+	}
+	r := NewRunner(acc, func() config.ReconciliationConfig { return cfg })
+	if err := r.RunIncremental(context.Background()); err != nil {
+		t.Fatalf("incremental: %v", err)
+	}
+
+	// 托管渠道 1（group uo-5-17）应被自动绑到 vendor。
+	b, err := acc.ActiveBindingFor(1)
+	if err != nil {
+		t.Fatalf("active binding: %v", err)
+	}
+	if b == nil {
+		t.Fatalf("managed channel 1 not auto-bound")
+	}
+	if b.VendorID != v.ID || b.Note != autoBindNote {
+		t.Fatalf("binding = (vendor %d, note %q), want (%d, %q)", b.VendorID, b.Note, v.ID, autoBindNote)
+	}
+	// 非托管渠道 2 不应被自动绑定。
+	if b2, _ := acc.ActiveBindingFor(2); b2 != nil {
+		t.Fatalf("non-managed channel 2 got bound: %#v", b2)
 	}
 }

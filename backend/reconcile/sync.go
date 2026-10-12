@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strconv"
 	"time"
 
@@ -86,6 +87,15 @@ func (s *SyncService) SyncChannels(ctx context.Context) (int, error) {
 	}
 	if err := s.acc.SaveReconciliationChannels(models); err != nil {
 		return 0, err
+	}
+	// 为 new-api 自动生成的托管渠道（上游分组）按 group 解析上游渠道 id 自动归属，
+	// 必须在 SyncWindow 之前：未绑定的渠道消费不会被拉取（SyncWindow 只处理已绑定渠道）。
+	bound, unresolved, err := s.autoBindManagedChannels(chans)
+	if err != nil {
+		return 0, err
+	}
+	if bound > 0 || unresolved > 0 {
+		log.Printf("[reconcile] 托管渠道自动绑定: 新建 %d, 未解析 %d", bound, unresolved)
 	}
 	return len(models), nil
 }
