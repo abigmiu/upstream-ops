@@ -29,7 +29,7 @@ func TestSaveSettingsKeepsAppVersion(t *testing.T) {
 	r := gin.New()
 	api := r.Group("/api")
 	registerSettings(api, &Deps{
-		Runtime: runtimeconfig.New(path, "", nil, nil, nil, nil, nil, nil, config.ProxyConfig{}, config.UpstreamConfig{}, config.GatewayConfig{}, nil),
+		Runtime: runtimeconfig.New(path, "", nil, nil, nil, nil, nil, nil, config.ProxyConfig{}, config.UpstreamConfig{}, config.GatewayConfig{}, config.ReconciliationConfig{}, nil),
 	})
 
 	body := `{

@@ -52,6 +52,7 @@ func TestApplyFromFileUpdatesUpstreamConfig(t *testing.T) {
 		config.ProxyConfig{},
 		config.UpstreamConfig{},
 		config.GatewayConfig{},
+		config.ReconciliationConfig{},
 		func(scfg config.SchedulerConfig, pcfg config.ProxyConfig) *scheduler.Scheduler {
 			return scheduler.New(scfg, nil, nil, nil, nil, nil, nil, nil, nil, pcfg, log)
 		},
@@ -75,5 +76,33 @@ func TestApplyFromFileUpdatesUpstreamConfig(t *testing.T) {
 	}
 	if conn.cfg.UserAgent != "custom-agent" {
 		t.Fatalf("user agent = %q", conn.cfg.UserAgent)
+	}
+}
+
+// 启动时（New）必须把对账配置注入缓存：CurrentReconciliation 读的就是它。
+// 回归历史 bug：只在 ApplyFromFile 里赋值会导致重启后对账静默停摆。
+func TestNewPopulatesReconciliationConfig(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	want := config.ReconciliationConfig{
+		Enabled:     true,
+		SyncCron:    "0 9 * * * *",
+		SiteURL:     "https://ai.example.com",
+		Token:       "tok",
+		UserID:      "1",
+		QuotaPerUSD: 500000,
+	}
+	mgr := New(
+		filepath.Join(t.TempDir(), "config.yaml"),
+		"",
+		log,
+		nil, nil, nil, nil, nil,
+		config.ProxyConfig{},
+		config.UpstreamConfig{},
+		config.GatewayConfig{},
+		want,
+		nil,
+	)
+	if got := mgr.CurrentReconciliation(); got.SiteURL != want.SiteURL || !got.Enabled || got.Token != want.Token {
+		t.Fatalf("CurrentReconciliation at boot = %#v, want %#v", got, want)
 	}
 }

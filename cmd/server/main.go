@@ -181,6 +181,7 @@ func main() {
 		cfg.Proxy,
 		cfg.Upstream,
 		cfg.Gateway,
+		cfg.Reconciliation,
 		schedulerFactory,
 	)
 

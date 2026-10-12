@@ -19,16 +19,16 @@ import (
 type SchedulerFactory func(config.SchedulerConfig, config.ProxyConfig) *scheduler.Scheduler
 
 type Manager struct {
-	mu               sync.RWMutex
-	configPath       string
-	securitySecret   string
-	log              *slog.Logger
-	dispatcher       *notify.Dispatcher
-	channelSvc       *channel.Service
-	gatewaySvc       *gateway.Service
-	schedulerFactory SchedulerFactory
-	auth             *auth.Service
-	scheduler        *scheduler.Scheduler
+	mu                   sync.RWMutex
+	configPath           string
+	securitySecret       string
+	log                  *slog.Logger
+	dispatcher           *notify.Dispatcher
+	channelSvc           *channel.Service
+	gatewaySvc           *gateway.Service
+	schedulerFactory     SchedulerFactory
+	auth                 *auth.Service
+	scheduler            *scheduler.Scheduler
 	proxyConfig          config.ProxyConfig
 	upstreamConfig       config.UpstreamConfig
 	gatewayConfig        config.GatewayConfig
@@ -52,6 +52,7 @@ func New(
 	proxyConfig config.ProxyConfig,
 	upstreamConfig config.UpstreamConfig,
 	gatewayConfig config.GatewayConfig,
+	reconciliationConfig config.ReconciliationConfig,
 	schedulerFactory SchedulerFactory,
 ) *Manager {
 	return &Manager{
@@ -67,6 +68,9 @@ func New(
 		proxyConfig:      proxyConfig,
 		upstreamConfig:   upstreamConfig.WithDefaults(),
 		gatewayConfig:    gatewayConfig.WithDefaults(),
+		// 启动时的对账配置必须在此注入：CurrentReconciliation 读的是这个缓存，
+		// 若只在 ApplyFromFile（设置页「保存并应用」）里赋值，重启后对账会静默停摆。
+		reconciliationConfig: reconciliationConfig,
 	}
 }
 
