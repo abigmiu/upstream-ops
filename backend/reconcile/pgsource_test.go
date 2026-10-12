@@ -178,6 +178,33 @@ func TestSyncWindowAttributesAcrossDays(t *testing.T) {
 	}
 }
 
+// 增量同步按 replace 绝对重算：窗口重叠（重试 / 并发 / 游标未推进）也不会重复累加。
+func TestIncrementalReplaceIsIdempotent(t *testing.T) {
+	db := newDB(t)
+	acc := storage.NewAccounting(db)
+	srv := newFakeNewAPI(t)
+	bindVendorFor(t, acc, 4, "ch4")
+
+	client := NewNewAPIClient(NewAPIClientConfig{SiteURL: srv.URL, Token: "tok", UserID: "1", QuotaPerUSD: 500000})
+	pg := &fakeUsageSource{byDay: []ChannelUsageDay{{ChannelID: 4, Day: today(), Amount: 33}}}
+	svc := NewSyncService(client, acc, SyncConfig{QuotaPerUSD: 500000, PG: pg})
+
+	start := DayFloor(time.Now())
+	end := time.Now()
+	for i := 0; i < 3; i++ {
+		if _, err := svc.SyncWindow(context.Background(), start, end, "replace"); err != nil {
+			t.Fatalf("sync window #%d: %v", i, err)
+		}
+	}
+	rows, err := acc.ListChannelUsageStats()
+	if err != nil {
+		t.Fatalf("list usage: %v", err)
+	}
+	if len(rows) != 1 || math.Abs(rows[0].Amount-33) > 1e-6 {
+		t.Fatalf("重复同步后应仍是单行 33，实际 %#v", rows)
+	}
+}
+
 // 未配置 PG 时回填报错。
 func TestBackfillUsageWithoutPGErrors(t *testing.T) {
 	db := newDB(t)

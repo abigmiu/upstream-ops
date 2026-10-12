@@ -68,7 +68,9 @@ func (r *Runner) RunIncremental(ctx context.Context) error {
 	}
 	defer svc.Close()
 
-	start := r.acc.SyncCursor()
+	// 从游标所在自然日 0 点起、以 replace 绝对重算受影响的天：
+	// 反复执行结果一致，且窗口重叠（重试 / 并发）也不会重复累加。
+	start := DayFloor(r.acc.SyncCursor())
 	end := time.Now()
 	startedAt := time.Now()
 
@@ -79,7 +81,7 @@ func (r *Runner) RunIncremental(ctx context.Context) error {
 		})
 		return err
 	}
-	res, err := svc.SyncWindow(ctx, start, end, "accumulate")
+	res, err := svc.SyncWindow(ctx, start, end, "replace")
 	if err != nil {
 		_, _ = r.acc.CreateSyncTaskLog(storage.SyncTaskLogInput{
 			JobName: "window-sync", Category: "daily", Source: "cron", Status: "failed",

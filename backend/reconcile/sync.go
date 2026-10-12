@@ -14,6 +14,12 @@ import (
 // shanghaiZone 返回对账统一时区。
 func shanghaiZone() *time.Location { return storage.Shanghai }
 
+// DayFloor 返回 t 所在自然日（上海时区）的 0 点。
+func DayFloor(t time.Time) time.Time {
+	d := t.In(shanghaiZone())
+	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, shanghaiZone())
+}
+
 // jsonUnmarshal 薄封装，便于测试替换。
 func jsonUnmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
 
@@ -215,34 +221,59 @@ func (s *SyncService) syncUsageFromPG(ctx context.Context, start, end time.Time,
 
 // syncUsageFromHTTP 逐渠道 HTTP 拉取消费（旧路径；无 PG 时的回退）。
 // new-api 无 group-by-channel 接口，只能对每个已绑定渠道各发一次请求。
+//
+// 按天切分：跨天窗口逐天拉取，replace 语义才正确、accumulate 也不会把多天用量堆到一天。
 func (s *SyncService) syncUsageFromHTTP(ctx context.Context, start, end time.Time, mode string) (int, error) {
 	chans, err := s.acc.ListReconciliationChannels()
 	if err != nil {
 		return 0, err
 	}
-	usageInputs := make([]storage.ChannelUsageInput, 0, len(chans))
+	// 预先取出已绑定渠道，避免每天都重查一遍绑定。
+	bound := make([]storage.ReconciliationChannel, 0, len(chans))
 	for _, c := range chans {
 		binding, err := s.acc.CurrentBinding(c.ChannelID)
 		if err != nil {
 			return 0, err
 		}
-		if binding == nil {
-			continue
+		if binding != nil {
+			bound = append(bound, c)
 		}
-		u, err := s.client.fetchChannelUsage(ctx, c.ChannelID, c.ChannelName, start, end)
-		if err != nil {
-			// 单渠道失败不阻断整体；跳过。
-			continue
-		}
-		usageInputs = append(usageInputs, storage.ChannelUsageInput{
-			ChannelID: u.ChannelID, ChannelName: u.ChannelName,
-			Amount: u.Amount, StartAt: u.StartAt, EndAt: u.EndAt,
-		})
 	}
-	if len(usageInputs) == 0 {
+	if len(bound) == 0 {
 		return 0, nil
 	}
-	return s.acc.SaveChannelUsageStats(usageInputs, mode)
+	written := 0
+	for day := DayFloor(start); day.Before(end); day = day.AddDate(0, 0, 1) {
+		segStart := day
+		if segStart.Before(start) {
+			segStart = start
+		}
+		segEnd := day.Add(24*time.Hour - time.Second)
+		if segEnd.After(end) {
+			segEnd = end
+		}
+		inputs := make([]storage.ChannelUsageInput, 0, len(bound))
+		for _, c := range bound {
+			u, err := s.client.fetchChannelUsage(ctx, c.ChannelID, c.ChannelName, segStart, segEnd)
+			if err != nil {
+				// 单渠道失败不阻断整体；跳过。
+				continue
+			}
+			inputs = append(inputs, storage.ChannelUsageInput{
+				ChannelID: u.ChannelID, ChannelName: u.ChannelName,
+				Amount: u.Amount, StartAt: u.StartAt, EndAt: u.EndAt,
+			})
+		}
+		if len(inputs) == 0 {
+			continue
+		}
+		n, err := s.acc.SaveChannelUsageStats(inputs, mode)
+		if err != nil {
+			return written, err
+		}
+		written += n
+	}
+	return written, nil
 }
 
 // channelNameMap 返回渠道 id → 名称映射（来自本地渠道缓存）。

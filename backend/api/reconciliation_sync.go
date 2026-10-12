@@ -134,15 +134,16 @@ func syncIncrementalHandler(c *gin.Context, d *Deps) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	start := d.Accounting.SyncCursor()
+	// 从游标所在自然日 0 点起、以 replace 绝对重算受影响的天：
+	// 反复触发结果一致，窗口重叠（重试 / 并发）也不会重复累加。
+	start := reconcile.DayFloor(d.Accounting.SyncCursor())
 	end := time.Now()
-	// 窗口按 10 分钟对齐到分钟，避免重复累加。
 	startedAt := time.Now()
 	if err := svc.SyncChannelsQuiet(ctx); err != nil {
 		fail(c, http.StatusBadGateway, err)
 		return
 	}
-	res, err := svc.SyncWindow(ctx, start, end, "accumulate")
+	res, err := svc.SyncWindow(ctx, start, end, "replace")
 	if err != nil {
 		fail(c, http.StatusBadGateway, err)
 		return
