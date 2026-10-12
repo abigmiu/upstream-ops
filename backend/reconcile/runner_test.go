@@ -86,17 +86,9 @@ func TestRunnerIncrementalSyncsAgainstFakeSite(t *testing.T) {
 	if topups[0].Amount < 9.99 || topups[0].Amount > 10.01 {
 		t.Fatalf("topup amount = %v, want ~10", topups[0].Amount)
 	}
-	// 用户余额快照应写入 2 条。
-	captured, err := acc.LatestUserBalanceSnapshotAt()
-	if err != nil || captured == nil {
-		t.Fatalf("latest user balance: %v", err)
-	}
-	users, err := acc.ListUserBalanceSnapshotsAt(*captured)
-	if err != nil {
-		t.Fatalf("users: %v", err)
-	}
-	if len(users) != 2 {
-		t.Fatalf("user snapshots = %d, want 2", len(users))
+	// 用户余额快照不再随窗口同步产生：增量同步后不应有余额快照。
+	if captured, err := acc.LatestUserBalanceSnapshotAt(); err != nil || captured != nil {
+		t.Fatalf("window sync wrote user balance snapshot: captured=%v err=%v", captured, err)
 	}
 	// 同步日志应写入 1 条 success。
 	logs, err := acc.ListSyncTaskLogs(10)
@@ -113,6 +105,54 @@ func TestRunnerIncrementalSyncsAgainstFakeSite(t *testing.T) {
 	// 游标应推进到接近当前时间。
 	if cur := acc.SyncCursor(); cur.IsZero() {
 		t.Fatalf("sync cursor not advanced")
+	}
+}
+
+// 用户余额快照为独立任务：单独调用 RunUserBalance 才写入 2 条。
+func TestRunnerUserBalanceSnapshot(t *testing.T) {
+	db := newDB(t)
+	acc := storage.NewAccounting(db)
+	srv := newFakeNewAPI(t)
+
+	cfg := config.ReconciliationConfig{
+		Enabled: true, SiteURL: srv.URL, Token: "tok", UserID: "1", QuotaPerUSD: 500000,
+	}
+	r := NewRunner(acc, func() config.ReconciliationConfig { return cfg })
+
+	if err := r.RunUserBalance(context.Background()); err != nil {
+		t.Fatalf("run user balance: %v", err)
+	}
+
+	captured, err := acc.LatestUserBalanceSnapshotAt()
+	if err != nil || captured == nil {
+		t.Fatalf("latest user balance: %v", err)
+	}
+	users, err := acc.ListUserBalanceSnapshotsAt(*captured)
+	if err != nil {
+		t.Fatalf("users: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("user snapshots = %d, want 2", len(users))
+	}
+	logs, err := acc.ListSyncTaskLogs(10)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if len(logs) != 1 || logs[0].Status != "success" || logs[0].UserBalanceCount != 2 {
+		t.Fatalf("sync logs = %#v, want 1 success with user_balance_count=2", logs)
+	}
+}
+
+// 未配置站点时 RunUserBalance 是 no-op。
+func TestRunnerUserBalanceNoopWithoutConfig(t *testing.T) {
+	db := newDB(t)
+	acc := storage.NewAccounting(db)
+	r := NewRunner(acc, func() config.ReconciliationConfig { return config.ReconciliationConfig{} })
+	if err := r.RunUserBalance(context.Background()); err != nil {
+		t.Fatalf("noop user balance returned err: %v", err)
+	}
+	if captured, _ := acc.LatestUserBalanceSnapshotAt(); captured != nil {
+		t.Fatalf("noop wrote a snapshot: %v", captured)
 	}
 }
 

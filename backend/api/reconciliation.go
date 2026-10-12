@@ -68,6 +68,7 @@ func registerReconciliation(g *gin.RouterGroup, d *Deps) {
 	rg.POST("/sync/channels", func(c *gin.Context) { syncChannelsHandler(c, d) })
 	rg.POST("/sync/range", func(c *gin.Context) { syncRangeHandler(c, d) })
 	rg.POST("/sync/incremental", func(c *gin.Context) { syncIncrementalHandler(c, d) })
+	rg.POST("/sync/user-balance", func(c *gin.Context) { syncUserBalanceHandler(c, d) })
 	rg.POST("/sync/test", func(c *gin.Context) { testNewAPIHandler(c, d) })
 }
 

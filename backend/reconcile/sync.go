@@ -52,11 +52,11 @@ type SyncConfig struct {
 }
 
 // SyncResult 一次同步的结果摘要。
+// 注意：用户余额快照不再随窗口同步产生（另有每日任务），故不在此统计。
 type SyncResult struct {
 	Channels    int
 	Topups      int
 	UsageRows   int
-	UserRows    int
 	WindowStart time.Time
 	WindowEnd   time.Time
 }
@@ -106,8 +106,11 @@ func (s *SyncService) SyncChannelsQuiet(ctx context.Context) error {
 	return err
 }
 
-// SyncWindow 同步一个时间窗口：充值日志 + 各渠道消费 + 用户余额快照。
+// SyncWindow 同步一个时间窗口：充值日志 + 各渠道消费。
 // usageMode 决定消费写入方式（accumulate / replace）。
+//
+// 用户余额快照已从中剥离（见 SyncUserBalance）：余额只需每天采一次，
+// 跟随高频窗口同步会既浪费请求、又把「存量余额」混进窗口区间语义里。
 func (s *SyncService) SyncWindow(ctx context.Context, start, end time.Time, usageMode string) (*SyncResult, error) {
 	res := &SyncResult{WindowStart: start, WindowEnd: end}
 
@@ -161,14 +164,19 @@ func (s *SyncService) SyncWindow(ctx context.Context, start, end time.Time, usag
 		res.UsageRows = n
 	}
 
-	// 3) 用户余额快照（以窗口结束时间为采集点）
+	return res, nil
+}
+
+// SyncUserBalance 全量拉取站点用户余额，在 capturedAt 采集点落一份快照。
+// 独立于窗口同步：一天采一次即可（快照按 (username, day) 覆盖，同一天重复采集取更晚的）。
+func (s *SyncService) SyncUserBalance(ctx context.Context, capturedAt time.Time) (int, error) {
 	users, err := s.client.fetchUserBalances(ctx)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	selfSet, err := s.acc.GetSelfUsernames()
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	ubInputs := make([]storage.UserBalanceInput, 0, len(users))
 	for _, u := range users {
@@ -177,11 +185,7 @@ func (s *SyncService) SyncWindow(ctx context.Context, start, end time.Time, usag
 			UsedAmount: u.UsedAmount, RequestCount: u.RequestCount,
 		})
 	}
-	if n, err := s.acc.SaveUserBalanceSnapshots(ubInputs, end, selfSet); err == nil {
-		res.UserRows = n
-	}
-
-	return res, nil
+	return s.acc.SaveUserBalanceSnapshots(ubInputs, capturedAt, selfSet)
 }
 
 // ResolveChannelNames 返回渠道 id → 名称映射，用于消费归属。

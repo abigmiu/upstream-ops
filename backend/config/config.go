@@ -115,9 +115,13 @@ type SchedulerConfig struct {
 	ReconcileCron string `mapstructure:"reconcileCron" yaml:"reconcileCron" json:"reconcileCron"`
 	// VendorSnapshotCron 上游余额快照自动采集的 cron（6 字段含秒）。
 	// 每隔一段跑一次，把监控采到的余额落成当天的对账快照（Upsert 取当天末值）。
-	VendorSnapshotCron string          `mapstructure:"vendorSnapshotCron" yaml:"vendorSnapshotCron" json:"vendorSnapshotCron"`
-	Concurrency        int             `mapstructure:"concurrency" yaml:"concurrency" json:"concurrency"`
-	Retention          RetentionConfig `mapstructure:"retention" yaml:"retention" json:"retention"`
+	VendorSnapshotCron string `mapstructure:"vendorSnapshotCron" yaml:"vendorSnapshotCron" json:"vendorSnapshotCron"`
+	// UserBalanceCron 用户余额快照自动采集的 cron（6 字段含秒）。
+	// 全量拉取站点用户余额并落成当天快照（供「预计结算利润」用）。一天一次即可，
+	// 与高频的对账窗口同步解耦，避免每次都全量拉一遍用户。
+	UserBalanceCron string          `mapstructure:"userBalanceCron" yaml:"userBalanceCron" json:"userBalanceCron"`
+	Concurrency     int             `mapstructure:"concurrency" yaml:"concurrency" json:"concurrency"`
+	Retention       RetentionConfig `mapstructure:"retention" yaml:"retention" json:"retention"`
 }
 
 // RetentionConfig 历史数据保留策略。
@@ -489,6 +493,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.reconcileCron", "0 9 * * * *")
 	// 上游余额快照自动采集：每 15 分钟一次，紧跟在余额扫描（:37）之后，取当天末值。
 	v.SetDefault("scheduler.vendorSnapshotCron", "50 */15 * * * *")
+	// 用户余额快照：每天凌晨 3:40 全量拉一次（一天一次足够，避免高频全量拉用户）。
+	v.SetDefault("scheduler.userBalanceCron", "0 40 3 * * *")
 	v.SetDefault("scheduler.concurrency", 4)
 
 	// 历史清理：每天凌晨 3:17 跑一次（6 字段 cron 含秒），

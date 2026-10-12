@@ -275,6 +275,10 @@ export interface SystemSchedulerConfig {
   rateCron: string
   concurrency: number
   retention: SystemSchedulerRetentionConfig
+  // 以下 cron 由后端默认值驱动，设置页无输入框；随配置对象原样回传（spread 保留）。
+  reconcileCron?: string
+  vendorSnapshotCron?: string
+  userBalanceCron?: string
 }
 
 export interface SystemNotificationsConfig {

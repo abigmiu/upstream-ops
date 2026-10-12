@@ -23,14 +23,14 @@ func NewRunner(acc *storage.Accounting, prov ConfigProvider) *Runner {
 	return &Runner{acc: acc, prov: prov}
 }
 
-// RunIncremental 执行一次增量同步。未配置站点或未启用时直接返回 nil（不视为错误）。
-func (r *Runner) RunIncremental(ctx context.Context) error {
+// newSyncService 按当前配置构造同步服务；未配置站点/Token 时返回 ok=false（调用方视为 no-op）。
+func (r *Runner) newSyncService() (*SyncService, bool) {
 	if r == nil || r.acc == nil {
-		return nil
+		return nil, false
 	}
 	cfg := r.prov()
 	if cfg.SiteURL == "" || cfg.Token == "" {
-		return nil
+		return nil, false
 	}
 	client := NewNewAPIClient(NewAPIClientConfig{
 		SiteURL:     cfg.SiteURL,
@@ -42,10 +42,18 @@ func (r *Runner) RunIncremental(ctx context.Context) error {
 	for _, id := range cfg.NonCashTopupLogIDs {
 		nonCash[id] = true
 	}
-	svc := NewSyncService(client, r.acc, SyncConfig{
+	return NewSyncService(client, r.acc, SyncConfig{
 		QuotaPerUSD:        cfg.QuotaPerUSD,
 		NonCashTopupLogIDs: nonCash,
-	})
+	}), true
+}
+
+// RunIncremental 执行一次增量同步。未配置站点或未启用时直接返回 nil（不视为错误）。
+func (r *Runner) RunIncremental(ctx context.Context) error {
+	svc, ok := r.newSyncService()
+	if !ok {
+		return nil
+	}
 
 	start := r.acc.SyncCursor()
 	end := time.Now()
@@ -70,8 +78,31 @@ func (r *Runner) RunIncremental(ctx context.Context) error {
 	_, _ = r.acc.CreateSyncTaskLog(storage.SyncTaskLogInput{
 		JobName: "window-sync", Category: "daily", Source: "cron", Status: "success",
 		WindowStart: &start, WindowEnd: &end,
-		TopupCount: res.Topups, UsageCount: res.UsageRows, UserBalanceCount: res.UserRows,
+		TopupCount: res.Topups, UsageCount: res.UsageRows,
 		StartedAt: startedAt, CompletedAt: time.Now(),
+	})
+	return nil
+}
+
+// RunUserBalance 全量拉取用户余额并落成当天快照。
+// 独立每日任务：余额只需低频采集，与高频窗口同步解耦，避免每次窗口都全量拉一遍用户。
+func (r *Runner) RunUserBalance(ctx context.Context) error {
+	svc, ok := r.newSyncService()
+	if !ok {
+		return nil
+	}
+	startedAt := time.Now()
+	n, err := svc.SyncUserBalance(ctx, startedAt)
+	if err != nil {
+		_, _ = r.acc.CreateSyncTaskLog(storage.SyncTaskLogInput{
+			JobName: "user-balance", Category: "daily", Source: "cron", Status: "failed",
+			Message: err.Error(), StartedAt: startedAt, CompletedAt: time.Now(),
+		})
+		return err
+	}
+	_, _ = r.acc.CreateSyncTaskLog(storage.SyncTaskLogInput{
+		JobName: "user-balance", Category: "daily", Source: "cron", Status: "success",
+		UserBalanceCount: n, StartedAt: startedAt, CompletedAt: time.Now(),
 	})
 	return nil
 }

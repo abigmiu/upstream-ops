@@ -29,13 +29,14 @@ export function JobsTab() {
 
   const selfList = selfText ?? (selfUsers.data ?? []).join("\n")
 
-  async function run(kind: "channels" | "incremental" | "range" | "test") {
+  async function run(kind: "channels" | "incremental" | "user-balance" | "range" | "test") {
     setBusy(kind)
     try {
       let path = "/reconciliation/sync/incremental"
       let body: Record<string, unknown> = {}
       if (kind === "channels") path = "/reconciliation/sync/channels"
       if (kind === "test") path = "/reconciliation/sync/test"
+      if (kind === "user-balance") path = "/reconciliation/sync/user-balance"
       if (kind === "range") {
         path = "/reconciliation/sync/range"
         body = { start_date: rangeStart, end_date: rangeEnd }
@@ -88,6 +89,9 @@ export function JobsTab() {
             </Button>
             <Button size="sm" disabled={busy !== null} onClick={() => run("incremental")}>
               {"增量同步"}
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run("user-balance")}>
+              {"刷新用户余额"}
             </Button>
           </div>
           <div className="flex flex-wrap items-end gap-2">

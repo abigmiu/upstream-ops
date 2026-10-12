@@ -158,20 +158,30 @@ func (f *fakeVendorSnapshot) SyncFromMonitoring() (int, error) {
 	return 1, nil
 }
 
-// 只有注入了服务时，对账 / 余额快照两个 cron 才会被注册。
+type fakeUserBalance struct {
+	calls int
+}
+
+func (f *fakeUserBalance) RunUserBalance(_ context.Context) error {
+	f.calls++
+	return nil
+}
+
+// 只有注入了服务时，对账 / 余额快照 / 用户余额三个 cron 才会被注册。
 // 这是 main.go 与 runtime 重建 scheduler 时必须重新注入服务的契约：
 // 漏注入不会报错，但对应的定时任务会静默消失（历史 bug）。
 func TestStartRegistersCronsOnlyWhenServiceInjected(t *testing.T) {
 	cfg := config.SchedulerConfig{
 		ReconcileCron:      "0 9 * * * *",
 		VendorSnapshotCron: "50 */15 * * * *",
+		UserBalanceCron:    "0 40 3 * * *",
 	}
 	newSch := func() *Scheduler {
 		return New(cfg, nil, nil, nil, nil, nil, nil, nil, nil,
 			config.ProxyConfig{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}
 
-	// 未注入服务：两个 cron 都不注册。
+	// 未注入服务：三个 cron 都不注册。
 	bare := newSch()
 	if err := bare.Start(); err != nil {
 		t.Fatalf("start bare: %v", err)
@@ -181,15 +191,35 @@ func TestStartRegistersCronsOnlyWhenServiceInjected(t *testing.T) {
 	}
 	bare.Stop()
 
-	// 注入服务后：两个 cron 都注册。
+	// 注入服务后：三个 cron 都注册。
 	bound := newSch()
 	bound.SetReconcileSync(&fakeReconcileSync{})
 	bound.SetVendorSnapshotService(&fakeVendorSnapshot{})
+	bound.SetUserBalanceService(&fakeUserBalance{})
 	if err := bound.Start(); err != nil {
 		t.Fatalf("start bound: %v", err)
 	}
-	if n := len(bound.cron.Entries()); n != 2 {
-		t.Fatalf("entries with services = %d, want 2", n)
+	if n := len(bound.cron.Entries()); n != 3 {
+		t.Fatalf("entries with services = %d, want 3", n)
 	}
 	bound.Stop()
+}
+
+// runUserBalance 注入后应触发一次；未注入不应 panic。
+func TestRunUserBalanceInvokesHook(t *testing.T) {
+	s := New(
+		config.SchedulerConfig{},
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		config.ProxyConfig{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	// 未注入：安全 no-op。
+	s.runUserBalance()
+
+	fake := &fakeUserBalance{}
+	s.SetUserBalanceService(fake)
+	s.runUserBalance()
+	if fake.calls != 1 {
+		t.Fatalf("user balance calls = %d, want 1", fake.calls)
+	}
 }

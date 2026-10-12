@@ -154,6 +154,7 @@ func main() {
 		s := scheduler.New(scfg, monitorSvc, monLogs, rates, notifies, announcements, captchas, cipher, gatewaySvc, pcfg, log)
 		s.SetReconcileSync(reconcileRunner)
 		s.SetVendorSnapshotService(vendorSnapSvc)
+		s.SetUserBalanceService(reconcileRunner)
 		return s
 	}
 	// 对账同步开关：关掉或未配站点时清空 reconcileCron（与 runtime ApplyFromFile 一致）。

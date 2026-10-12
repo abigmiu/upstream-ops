@@ -135,15 +135,43 @@ func syncIncrementalHandler(c *gin.Context, d *Deps) {
 	completedAt := time.Now()
 	d.Accounting.SetSyncCursor(end)
 	log := syncLogFromResult("window-sync", "manual", startedAt, completedAt,
-		start, end, res.Topups, res.UsageRows, res.UserRows, "")
+		start, end, res.Topups, res.UsageRows, 0, "")
 	if _, err := d.Accounting.CreateSyncTaskLog(log); err != nil {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
-		"topups": res.Topups, "usage": res.UsageRows, "users": res.UserRows,
+		"topups": res.Topups, "usage": res.UsageRows,
 		"window_start": start, "window_end": end,
 	}})
+}
+
+// syncUserBalanceHandler 全量拉取用户余额并落成当天快照（手动触发）。
+// 余额平时由每日 cron 采样；此接口用于需要即时刷新时手动补采一次。
+func syncUserBalanceHandler(c *gin.Context, d *Deps) {
+	svc, err := d.newSyncService()
+	if err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	startedAt := time.Now()
+	n, err := svc.SyncUserBalance(ctx, startedAt)
+	if err != nil {
+		_, _ = d.Accounting.CreateSyncTaskLog(syncLogFromErr(d, "user-balance", "manual", startedAt, err))
+		fail(c, http.StatusBadGateway, err)
+		return
+	}
+	completedAt := time.Now()
+	log := syncLogFromResult("user-balance", "manual", startedAt, completedAt,
+		startedAt, completedAt, 0, 0, n, "")
+	if _, err := d.Accounting.CreateSyncTaskLog(log); err != nil {
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"users": n}})
 }
 
 // testNewAPIHandler 校验站点配置。

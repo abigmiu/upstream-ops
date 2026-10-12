@@ -30,6 +30,12 @@ type Scheduler struct {
 	proxy         config.ProxyConfig
 	reconcileSync reconcileSyncService
 	vendorSnap    vendorSnapshotService
+	userBalance   userBalanceService
+}
+
+// userBalanceService 全量拉取并落盘用户余额快照（实现见 reconcile 包）。
+type userBalanceService interface {
+	RunUserBalance(ctx context.Context) error
 }
 
 // vendorSnapshotService 把监控采到的上游余额落成对账快照（实现见 reconcile 包）。
@@ -99,6 +105,11 @@ func (s *Scheduler) Start() error {
 			return err
 		}
 	}
+	if s.cfg.UserBalanceCron != "" && s.userBalance != nil {
+		if _, err := s.cron.AddFunc(s.cfg.UserBalanceCron, s.runUserBalance); err != nil {
+			return err
+		}
+	}
 	if s.cfg.Retention.Cron != "" && s.hasRetention() {
 		if _, err := s.cron.AddFunc(s.cfg.Retention.Cron, s.runRetention); err != nil {
 			return err
@@ -110,6 +121,7 @@ func (s *Scheduler) Start() error {
 		"rateCron", s.cfg.RateCron,
 		"reconcileCron", s.cfg.ReconcileCron,
 		"vendorSnapshotCron", s.cfg.VendorSnapshotCron,
+		"userBalanceCron", s.cfg.UserBalanceCron,
 		"retentionCron", s.cfg.Retention.Cron,
 		"concurrency", s.cfg.Concurrency,
 	)
@@ -124,6 +136,23 @@ func (s *Scheduler) SetReconcileSync(svc reconcileSyncService) {
 // SetVendorSnapshotService 注入上游余额快照自动采集服务（在 Start 前调用）。
 func (s *Scheduler) SetVendorSnapshotService(svc vendorSnapshotService) {
 	s.vendorSnap = svc
+}
+
+// SetUserBalanceService 注入用户余额快照采集服务（在 Start 前调用）。
+func (s *Scheduler) SetUserBalanceService(svc userBalanceService) {
+	s.userBalance = svc
+}
+
+// runUserBalance 全量拉取用户余额并落成当天快照（一天一次）。
+func (s *Scheduler) runUserBalance() {
+	if s.userBalance == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if err := s.userBalance.RunUserBalance(ctx); err != nil {
+		s.log.Warn("user balance snapshot failed", "err", err)
+	}
 }
 
 // runReconcile 执行一次对账增量同步。
