@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -49,6 +50,9 @@ func (j *jsonInt) UnmarshalJSON(data []byte) error {
 type SyncConfig struct {
 	QuotaPerUSD        float64
 	NonCashTopupLogIDs map[int64]bool
+	// PG 非空时，渠道消费走直连 PostgreSQL（一条 SQL 汇总全部渠道）；
+	// 为空则回退逐渠道 HTTP（旧行为）。所有权归调用方，由 SyncService.Close 释放。
+	PG UsageSource
 }
 
 // SyncResult 一次同步的结果摘要。
@@ -71,6 +75,13 @@ type SyncService struct {
 // NewSyncService 构造同步服务。
 func NewSyncService(client *NewAPIClient, acc *storage.Accounting, cfg SyncConfig) *SyncService {
 	return &SyncService{client: client, acc: acc, cfg: cfg}
+}
+
+// Close 释放持有的资源（当前仅 PG 连接池）。可安全重复调用。
+func (s *SyncService) Close() {
+	if s != nil && s.cfg.PG != nil {
+		_ = s.cfg.PG.Close()
+	}
 }
 
 // SyncChannels 同步渠道列表到对账渠道缓存。
@@ -132,16 +143,65 @@ func (s *SyncService) SyncWindow(ctx context.Context, start, end time.Time, usag
 	}
 	res.Topups = len(inputs)
 
-	// 2) 渠道消费（仅对已绑定的渠道拉取）
-	chans, err := s.acc.ListReconciliationChannels()
+	// 2) 渠道消费
+	n, err := s.syncUsage(ctx, start, end, usageMode)
 	if err != nil {
 		return nil, err
+	}
+	res.UsageRows = n
+
+	return res, nil
+}
+
+// syncUsage 写入 [start, end) 的渠道消费。
+// 配置了 PG 时走直连库（一条 SQL），失败则回退逐渠道 HTTP，保证 PG 抖动不影响同步。
+func (s *SyncService) syncUsage(ctx context.Context, start, end time.Time, mode string) (int, error) {
+	if s.cfg.PG != nil {
+		n, err := s.syncUsageFromPG(ctx, start, end, mode)
+		if err == nil {
+			return n, nil
+		}
+		log.Printf("[reconcile] PG 取渠道消费失败，回退逐渠道 HTTP: %v", err)
+	}
+	return s.syncUsageFromHTTP(ctx, start, end, mode)
+}
+
+// syncUsageFromPG 直连 PostgreSQL，一条 GROUP BY 汇总全部渠道的消费。
+// 仅写入已绑定渠道（SaveChannelUsageStats 内部会跳过无绑定渠道）。
+func (s *SyncService) syncUsageFromPG(ctx context.Context, start, end time.Time, mode string) (int, error) {
+	usage, err := s.cfg.PG.UsageByChannel(ctx, start, end)
+	if err != nil {
+		return 0, err
+	}
+	if len(usage) == 0 {
+		return 0, nil
+	}
+	names, err := s.channelNameMap()
+	if err != nil {
+		return 0, err
+	}
+	inputs := make([]storage.ChannelUsageInput, 0, len(usage))
+	for chID, amount := range usage {
+		inputs = append(inputs, storage.ChannelUsageInput{
+			ChannelID: chID, ChannelName: names[chID],
+			Amount: amount, StartAt: start, EndAt: end,
+		})
+	}
+	return s.acc.SaveChannelUsageStats(inputs, mode)
+}
+
+// syncUsageFromHTTP 逐渠道 HTTP 拉取消费（旧路径；无 PG 时的回退）。
+// new-api 无 group-by-channel 接口，只能对每个已绑定渠道各发一次请求。
+func (s *SyncService) syncUsageFromHTTP(ctx context.Context, start, end time.Time, mode string) (int, error) {
+	chans, err := s.acc.ListReconciliationChannels()
+	if err != nil {
+		return 0, err
 	}
 	usageInputs := make([]storage.ChannelUsageInput, 0, len(chans))
 	for _, c := range chans {
 		binding, err := s.acc.CurrentBinding(c.ChannelID)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
 		if binding == nil {
 			continue
@@ -156,15 +216,64 @@ func (s *SyncService) SyncWindow(ctx context.Context, start, end time.Time, usag
 			Amount: u.Amount, StartAt: u.StartAt, EndAt: u.EndAt,
 		})
 	}
-	if len(usageInputs) > 0 {
-		n, err := s.acc.SaveChannelUsageStats(usageInputs, usageMode)
-		if err != nil {
-			return nil, err
-		}
-		res.UsageRows = n
+	if len(usageInputs) == 0 {
+		return 0, nil
 	}
+	return s.acc.SaveChannelUsageStats(usageInputs, mode)
+}
 
-	return res, nil
+// channelNameMap 返回渠道 id → 名称映射（来自本地渠道缓存）。
+func (s *SyncService) channelNameMap() (map[uint]string, error) {
+	chans, err := s.acc.ListReconciliationChannels()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]string, len(chans))
+	for _, c := range chans {
+		out[c.ChannelID] = c.ChannelName
+	}
+	return out, nil
+}
+
+// BackfillUsageFromPG 用直连 PG 按天重建 [start, end) 的历史渠道消费。
+//
+// 与逐日 HTTP 补数等价，但只需两次查询（渠道名 + 一次按天汇总），不受请求数/超时限制。
+// 逐日以 replace 模式写入：先删当天再整批覆盖，因此可安全重复执行。
+func (s *SyncService) BackfillUsageFromPG(ctx context.Context, start, end time.Time) (int, error) {
+	if s.cfg.PG == nil {
+		return 0, fmt.Errorf("未配置 pgDsn，无法从 PostgreSQL 回填消费")
+	}
+	days, err := s.cfg.PG.UsageByChannelDay(ctx, start, end)
+	if err != nil {
+		return 0, err
+	}
+	if len(days) == 0 {
+		return 0, nil
+	}
+	names, err := s.channelNameMap()
+	if err != nil {
+		return 0, err
+	}
+	byDay := make(map[string][]storage.ChannelUsageInput)
+	for _, d := range days {
+		dayStart, err := time.ParseInLocation("2006-01-02", d.Day, shanghaiZone())
+		if err != nil {
+			continue
+		}
+		byDay[d.Day] = append(byDay[d.Day], storage.ChannelUsageInput{
+			ChannelID: d.ChannelID, ChannelName: names[d.ChannelID],
+			Amount: d.Amount, StartAt: dayStart, EndAt: dayStart.Add(24*time.Hour - time.Second),
+		})
+	}
+	written := 0
+	for _, inputs := range byDay {
+		n, err := s.acc.SaveChannelUsageStats(inputs, "replace")
+		if err != nil {
+			return written, err
+		}
+		written += n
+	}
+	return written, nil
 }
 
 // SyncUserBalance 全量拉取站点用户余额，在 capturedAt 采集点落一份快照。

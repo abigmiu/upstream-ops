@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/bejix/upstream-ops/backend/config"
@@ -42,9 +43,20 @@ func (r *Runner) newSyncService() (*SyncService, bool) {
 	for _, id := range cfg.NonCashTopupLogIDs {
 		nonCash[id] = true
 	}
+	// 配置了 pgDsn 则直连 new-api 的库取渠道消费；构造失败（DSN 非法）只记日志并回退 HTTP。
+	var pg UsageSource
+	if cfg.PGDSN != "" {
+		p, err := NewPGUsageSource(cfg.PGDSN, cfg.QuotaPerUSD)
+		if err != nil {
+			log.Printf("[reconcile] 初始化 PG 数据源失败，回退逐渠道 HTTP: %v", err)
+		} else {
+			pg = p
+		}
+	}
 	return NewSyncService(client, r.acc, SyncConfig{
 		QuotaPerUSD:        cfg.QuotaPerUSD,
 		NonCashTopupLogIDs: nonCash,
+		PG:                 pg,
 	}), true
 }
 
@@ -54,6 +66,7 @@ func (r *Runner) RunIncremental(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
+	defer svc.Close()
 
 	start := r.acc.SyncCursor()
 	end := time.Now()
@@ -91,6 +104,7 @@ func (r *Runner) RunUserBalance(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
+	defer svc.Close()
 	startedAt := time.Now()
 	n, err := svc.SyncUserBalance(ctx, startedAt)
 	if err != nil {

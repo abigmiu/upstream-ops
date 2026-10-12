@@ -49,6 +49,11 @@ type ReconciliationConfig struct {
 	QuotaPerUSD float64 `mapstructure:"quotaPerUsd" yaml:"quotaPerUsd" json:"quotaPerUsd"`
 	// NonCashTopupLogIDs 不计入现金的充值日志 id（例如自己后台生成的兑换码）。
 	NonCashTopupLogIDs []int64 `mapstructure:"nonCashTopupLogIds" yaml:"nonCashTopupLogIds" json:"nonCashTopupLogIds"`
+	// PGDSN new-api 站点的 PostgreSQL DSN。非空时，渠道消费改为直连库一条 SQL 汇总
+	// （new-api 的 HTTP 接口没有 group-by-channel 出口，只能逐渠道拉；见 reconcile.PGUsageSource）。
+	// 空 = 回退逐渠道 HTTP，行为与旧版一致。
+	// 含密码：json:"-" 永不返回给前端；settings 整体保存时需显式保留（见 api.saveSettingsConfig）。
+	PGDSN string `mapstructure:"pgDsn" yaml:"pgDsn" json:"-"`
 }
 
 type AppConfig struct {

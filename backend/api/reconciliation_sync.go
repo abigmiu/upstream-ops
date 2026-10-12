@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -25,9 +26,20 @@ func (d *Deps) newSyncService() (*reconcile.SyncService, error) {
 	for _, id := range cfg.NonCashTopupLogIDs {
 		nonCash[id] = true
 	}
+	// 配置了 pgDsn 则直连 new-api 的库取渠道消费；构造失败只记日志并回退逐渠道 HTTP。
+	var pg reconcile.UsageSource
+	if cfg.PGDSN != "" {
+		p, err := reconcile.NewPGUsageSource(cfg.PGDSN, cfg.QuotaPerUSD)
+		if err != nil {
+			log.Printf("[reconcile] 初始化 PG 数据源失败，回退逐渠道 HTTP: %v", err)
+		} else {
+			pg = p
+		}
+	}
 	return reconcile.NewSyncService(client, d.Accounting, reconcile.SyncConfig{
 		QuotaPerUSD:        cfg.QuotaPerUSD,
 		NonCashTopupLogIDs: nonCash,
+		PG:                 pg,
 	}), nil
 }
 
@@ -46,6 +58,7 @@ func syncChannelsHandler(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	defer svc.Close()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Minute)
 	defer cancel()
 	n, err := svc.SyncChannels(ctx)
@@ -73,6 +86,7 @@ func syncRangeHandler(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	defer svc.Close()
 	start, end, err := parseDateRange(in.StartDate, in.EndDate)
 	if err != nil {
 		fail(c, http.StatusBadRequest, err)
@@ -116,6 +130,7 @@ func syncIncrementalHandler(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	defer svc.Close()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
@@ -154,6 +169,7 @@ func syncUserBalanceHandler(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	defer svc.Close()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
@@ -172,6 +188,54 @@ func syncUserBalanceHandler(c *gin.Context, d *Deps) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"users": n}})
+}
+
+// syncBackfillUsageHandler 从 new-api 的 PostgreSQL 直连回填历史渠道消费（按天 replace，可重复执行）。
+// 请求体 {start_date,end_date} 可选：缺省 start 取 2000-01-01、end 取今天，即回填全部历史。
+// 仅当配置了 reconciliation.pgDsn 时可用；否则报错（回退逐日 HTTP 补数请用 /sync/range）。
+func syncBackfillUsageHandler(c *gin.Context, d *Deps) {
+	var in syncRangeInput
+	_ = c.ShouldBindJSON(&in) // 允许空 body
+	svc, err := d.newSyncService()
+	if err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	defer svc.Close()
+
+	loc := storage.Shanghai
+	start := time.Date(2000, 1, 1, 0, 0, 0, 0, loc)
+	if in.StartDate != "" {
+		if start, err = time.ParseInLocation("2006-01-02", in.StartDate, loc); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+	}
+	endDay := time.Now().In(loc)
+	if in.EndDate != "" {
+		if endDay, err = time.ParseInLocation("2006-01-02", in.EndDate, loc); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+	}
+	end := endDay.Add(24 * time.Hour) // 右开区间，含 end 当天
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+	startedAt := time.Now()
+	n, err := svc.BackfillUsageFromPG(ctx, start, end)
+	if err != nil {
+		_, _ = d.Accounting.CreateSyncTaskLog(syncLogFromErr(d, "backfill-usage", "manual", startedAt, err))
+		fail(c, http.StatusBadGateway, err)
+		return
+	}
+	completedAt := time.Now()
+	entry := syncLogFromResult("backfill-usage", "manual", startedAt, completedAt, start, end, 0, n, 0, "")
+	if _, err := d.Accounting.CreateSyncTaskLog(entry); err != nil {
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"usage": n, "start": start, "end": end}})
 }
 
 // testNewAPIHandler 校验站点配置。

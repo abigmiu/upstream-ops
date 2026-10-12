@@ -82,7 +82,11 @@ func saveSettingsConfig(c *gin.Context, d *Deps) {
 	cfg.Proxy = in.Proxy
 	cfg.Upstream = in.Upstream.WithDefaults()
 	cfg.Gateway = in.Gateway.WithDefaults()
+	// Reconciliation 是整体替换，但 PGDSN 不出现在前端载荷里（json:"-"），
+	// 直接替换会把它清空。保留文件里已有的值，避免存一次设置就丢 DSN。
+	pgDSN := cfg.Reconciliation.PGDSN
 	cfg.Reconciliation = in.Reconciliation
+	cfg.Reconciliation.PGDSN = pgDSN
 
 	if err := config.Save(path, cfg); err != nil {
 		fail(c, http.StatusInternalServerError, err)

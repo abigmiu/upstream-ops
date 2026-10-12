@@ -29,7 +29,7 @@ export function JobsTab() {
 
   const selfList = selfText ?? (selfUsers.data ?? []).join("\n")
 
-  async function run(kind: "channels" | "incremental" | "user-balance" | "range" | "test") {
+  async function run(kind: "channels" | "incremental" | "user-balance" | "range" | "backfill-usage" | "test") {
     setBusy(kind)
     try {
       let path = "/reconciliation/sync/incremental"
@@ -39,6 +39,10 @@ export function JobsTab() {
       if (kind === "user-balance") path = "/reconciliation/sync/user-balance"
       if (kind === "range") {
         path = "/reconciliation/sync/range"
+        body = { start_date: rangeStart, end_date: rangeEnd }
+      }
+      if (kind === "backfill-usage") {
+        path = "/reconciliation/sync/backfill-usage"
         body = { start_date: rangeStart, end_date: rangeEnd }
       }
       const res = await apiFetch<{ data?: unknown }>(path, {
@@ -105,6 +109,15 @@ export function JobsTab() {
             </div>
             <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run("range")}>
               {"按区间补数"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy !== null}
+              title="直连 new-api 的 PostgreSQL，一条 SQL 按天重建渠道消费；可重复执行（整天 replace）"
+              onClick={() => run("backfill-usage")}
+            >
+              {"从库回填消费(PG)"}
             </Button>
             <span className="text-xs text-muted-foreground">{"留空默认补昨天的数据（整天 replace）"}</span>
           </div>
