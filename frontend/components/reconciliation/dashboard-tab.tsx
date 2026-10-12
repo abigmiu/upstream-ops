@@ -40,12 +40,10 @@ function todayStr(offsetDays = 0) {
 }
 
 export function DashboardTab() {
-  const [start, setStart] = useState(() => todayStr(-7))
-  const [end, setEnd] = useState(() => todayStr())
-  const [range, setRange] = useState<{ start?: string; end?: string }>({
-    start: todayStr(-7),
-    end: todayStr(),
-  })
+  // 默认看全量（含最新快照）：区块语义是"累计"，不该被默认截到近 7 天。
+  const [start, setStart] = useState(() => "")
+  const [end, setEnd] = useState(() => "")
+  const [range, setRange] = useState<{ start?: string; end?: string }>({})
 
   const query = useReconDashboard(range.start, range.end)
   const data = query.data
