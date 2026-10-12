@@ -80,8 +80,10 @@ func listVendorSnapshots(c *gin.Context, d *Deps) {
 }
 
 type vendorSnapshotInput struct {
-	VendorID       uint       `json:"vendor_id" binding:"required"`
-	UsedAmount     float64    `json:"used_amount"`
+	VendorID uint `json:"vendor_id" binding:"required"`
+	// UsedAmount 可选。缺省时由「累计净到账(流水台账) − 当前余额」自动算出，
+	// 手动补录只需填余额即可，不必再去上游面板抄累计已用。
+	UsedAmount     *float64   `json:"used_amount"`
 	CurrentBalance float64    `json:"current_balance" binding:"required"`
 	CapturedAt     *time.Time `json:"captured_at"`
 	Note           string     `json:"note"`
@@ -97,12 +99,24 @@ func createVendorSnapshot(c *gin.Context, d *Deps) {
 		fail(c, statusForErr(err), err)
 		return
 	}
+	used := 0.0
+	if in.UsedAmount != nil {
+		used = *in.UsedAmount
+	} else {
+		// 自动口径：累计已用 = 累计净到账 − 当前余额。
+		net, err := d.Accounting.NetRechargeByVendor()
+		if err != nil {
+			fail(c, http.StatusInternalServerError, err)
+			return
+		}
+		used = storage.Round6(net[in.VendorID] - in.CurrentBalance)
+	}
 	captured := time.Now()
 	if in.CapturedAt != nil {
 		captured = *in.CapturedAt
 	}
 	snap, err := d.Accounting.UpsertVendorSnapshot(storage.VendorSnapshotInput{
-		VendorID: in.VendorID, UsedAmount: in.UsedAmount,
+		VendorID: in.VendorID, UsedAmount: used,
 		CurrentBalance: in.CurrentBalance, CapturedAt: captured, Note: in.Note,
 	})
 	if err != nil {

@@ -70,6 +70,12 @@ export interface Channel {
   today_cost?: number | null
   today_cost_at?: string | null
   total_cost?: number | null
+  /** 对账口径累计消费；绑定上游时 total_cost 即为此值 */
+  recon_used?: number | null
+  /** 对账口径当前余额 */
+  recon_balance?: number | null
+  /** 面板自报累计消费（绑定上游时用于与对账口径对照） */
+  panel_total_cost?: number | null
   last_error?: string
   created_at: string
   updated_at: string
@@ -215,6 +221,9 @@ export interface DashboardChannelStat {
   last_balance?: number | null
   today_cost?: number | null
   total_cost?: number | null
+  recon_used?: number | null
+  recon_balance?: number | null
+  panel_total_cost?: number | null
   last_error?: string
 }
 

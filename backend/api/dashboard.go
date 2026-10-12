@@ -29,6 +29,11 @@ type dashboardChannelStat struct {
 	TodayCost      *float64 `json:"today_cost,omitempty"`
 	TotalCost      *float64 `json:"total_cost,omitempty"`
 	LastError      string   `json:"last_error,omitempty"`
+
+	// 对账口径。绑定上游后 TotalCost 被替换为 ReconUsed，PanelTotalCost 留面板自报值对照。
+	ReconUsed      *float64 `json:"recon_used,omitempty"`
+	ReconBalance   *float64 `json:"recon_balance,omitempty"`
+	PanelTotalCost *float64 `json:"panel_total_cost,omitempty"`
 }
 
 func dashboardSummary(c *gin.Context, d *Deps) {
@@ -45,6 +50,7 @@ func dashboardSummary(c *gin.Context, d *Deps) {
 	var lowest *dashboardLowest
 	var activeCount, failedCount int
 	now := costNow()
+	recon := reconUsageByChannel(d)
 
 	for _, ch := range channels {
 		// 暂停监控后缓存的今日消费不会刷新，跨天后按 0 展示与汇总。
@@ -58,6 +64,16 @@ func dashboardSummary(c *gin.Context, d *Deps) {
 			TodayCost:      todayCost,
 			TotalCost:      ch.TotalCost,
 			LastError:      ch.LastError,
+		}
+		// 绑定上游的渠道：累计消费改用对账口径，并保留面板自报值做对照。
+		totalCostVal := ch.TotalCost
+		if r, ok := reconUsageForChannel(recon, ch.ID); ok {
+			used, bal := r.Used, r.Balance
+			stat.PanelTotalCost = ch.TotalCost
+			stat.ReconUsed = &used
+			stat.ReconBalance = &bal
+			stat.TotalCost = &used
+			totalCostVal = &used
 		}
 		stats = append(stats, stat)
 		if ch.LastError != "" {
@@ -75,8 +91,8 @@ func dashboardSummary(c *gin.Context, d *Deps) {
 		if todayCost != nil {
 			todayTotalCost += *todayCost
 		}
-		if ch.TotalCost != nil {
-			totalCost += *ch.TotalCost
+		if totalCostVal != nil {
+			totalCost += *totalCostVal
 		}
 	}
 

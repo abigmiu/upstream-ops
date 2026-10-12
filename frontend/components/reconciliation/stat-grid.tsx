@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { ComponentType, ReactNode } from "react"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
@@ -7,12 +7,15 @@ export interface StatItem {
   value: ReactNode
   hint?: ReactNode
   tone?: "default" | "positive" | "negative" | "muted"
+  icon?: ComponentType<{ className?: string }>
+  /** 图标底色，如 "bg-brand/10 text-brand"。缺省用中性底。 */
+  iconTone?: string
 }
 
 const toneClass: Record<NonNullable<StatItem["tone"]>, string> = {
   default: "text-foreground",
-  positive: "text-emerald-600 dark:text-emerald-400",
-  negative: "text-rose-600 dark:text-rose-400",
+  positive: "text-success",
+  negative: "text-danger",
   muted: "text-muted-foreground",
 }
 
@@ -26,12 +29,29 @@ export function StatGrid({ items, columns = 4 }: { items: StatItem[]; columns?: 
   return (
     <div className={cn("grid grid-cols-1 gap-3", cols)}>
       {items.map((item) => (
-        <Card key={item.label} className="gap-1 p-3">
-          <div className="text-xs text-muted-foreground">{item.label}</div>
-          <div className={cn("text-lg font-semibold tabular-nums", toneClass[item.tone ?? "default"])}>
-            {item.value}
+        <Card
+          key={item.label}
+          className="flex flex-row items-start justify-between gap-2 border border-border p-3 shadow-none sm:p-4"
+        >
+          <div className="flex min-w-0 flex-col">
+            <span className="text-xs text-muted-foreground">{item.label}</span>
+            <p className={cn("mt-1 text-xl font-bold tracking-tight tabular-nums sm:text-2xl", toneClass[item.tone ?? "default"])}>
+              {item.value}
+            </p>
+            {item.hint ? (
+              <p className="mt-1 min-w-0 truncate text-xs text-muted-foreground">{item.hint}</p>
+            ) : null}
           </div>
-          {item.hint ? <div className="text-xs text-muted-foreground">{item.hint}</div> : null}
+          {item.icon ? (
+            <span
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-xl sm:size-10",
+                item.iconTone ?? "bg-muted text-muted-foreground",
+              )}
+            >
+              <item.icon className="size-5" />
+            </span>
+          ) : null}
         </Card>
       ))}
     </div>

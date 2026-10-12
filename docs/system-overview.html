@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>upstream-ops 系统总览</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --border:#e5e7eb; --fg:#0f172a; --muted:#64748b;
+    --brand:#2563eb; --brand-bg:#eff6ff;
+    --success:#16a34a; --success-bg:#f0fdf4;
+    --warning:#d97706; --warning-bg:#fffbeb;
+    --danger:#dc2626; --danger-bg:#fef2f2;
+    --purple:#7c3aed; --purple-bg:#f5f3ff;
+    --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.65; font-size:15px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+  a{color:var(--brand);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* Hero */
+  .hero{padding:56px 0 32px;border-bottom:1px solid var(--border);margin-bottom:36px}
+  .hero .tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;
+    color:var(--brand);background:var(--brand-bg);padding:4px 12px;border-radius:999px;text-transform:uppercase}
+  .hero h1{font-size:38px;line-height:1.2;margin:18px 0 12px;letter-spacing:-.02em}
+  .hero p{font-size:17px;color:var(--muted);max-width:640px;margin:0}
+  .hero .meta{margin-top:20px;display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .hero .meta b{color:var(--fg);font-weight:600}
+
+  h2{font-size:24px;letter-spacing:-.01em;margin:52px 0 8px;padding-top:8px}
+  h2 .num{color:var(--brand);font-weight:700;margin-right:10px}
+  h3{font-size:16px;margin:26px 0 10px}
+  .lead{color:var(--muted);margin:0 0 20px}
+
+  /* Cards */
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:820px){.g3,.g2{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+  .card .icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;margin-bottom:14px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .card p{margin:0;color:var(--muted);font-size:14px}
+  .card ul{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+  .card ul li{margin:4px 0}
+  .ic-brand{background:var(--brand-bg);color:var(--brand)}
+  .ic-success{background:var(--success-bg);color:var(--success)}
+  .ic-warning{background:var(--warning-bg);color:var(--warning)}
+  .ic-purple{background:var(--purple-bg);color:var(--purple)}
+
+  .badge{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;vertical-align:middle}
+  .b-auto{background:var(--success-bg);color:var(--success)}
+  .b-manual{background:var(--warning-bg);color:var(--warning)}
+  .b-brand{background:var(--brand-bg);color:var(--brand)}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+  th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  tbody tr:last-child td{border-bottom:none}
+  td.mono,code,.mono{font-family:var(--mono);font-size:12.5px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  code{background:#f1f5f9;padding:1.5px 6px;border-radius:5px;color:#334155}
+
+  /* Callouts */
+  .callout{border-radius:var(--radius);padding:18px 20px;margin:20px 0;border:1px solid var(--border);
+    background:var(--card);border-left-width:4px}
+  .callout.brand{border-left-color:var(--brand);background:var(--brand-bg)}
+  .callout.success{border-left-color:var(--success);background:var(--success-bg)}
+  .callout.warning{border-left-color:var(--warning);background:var(--warning-bg)}
+  .callout h4{margin:0 0 6px;font-size:15px}
+  .callout p{margin:0;font-size:14px;color:#334155}
+
+  /* Formula */
+  .formula{font-family:var(--mono);font-size:14px;background:#0f172a;color:#e2e8f0;
+    padding:16px 18px;border-radius:10px;margin:14px 0;overflow-x:auto;line-height:1.9}
+  .formula .c{color:#7dd3fc}
+  .formula .g{color:#86efac}
+  .formula .y{color:#fde68a}
+  .formula .r{color:#fca5a5}
+
+  /* Diagram */
+  .diagram{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:24px;overflow-x:auto;margin:20px 0}
+  svg{display:block;margin:0 auto;max-width:100%;height:auto}
+
+  /* Steps */
+  .steps{counter-reset:s;margin:18px 0}
+  .step{position:relative;padding-left:44px;padding-bottom:20px;border-left:2px solid var(--border);margin-left:15px}
+  .step:last-child{border-left-color:transparent;padding-bottom:0}
+  .step::before{counter-increment:s;content:counter(s);position:absolute;left:-16px;top:-2px;
+    width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;font-size:14px;font-weight:700;
+    display:flex;align-items:center;justify-content:center}
+  .step h4{margin:0 0 4px;font-size:15px}
+  .step p{margin:0;color:var(--muted);font-size:14px}
+
+  .kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
+  @media(max-width:640px){.kpi{grid-template-columns:1fr}}
+  .kpi .k{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px 16px}
+  .kpi .k .lbl{font-size:12.5px;color:var(--muted)}
+  .kpi .k .f{font-family:var(--mono);font-size:12.5px;color:#334155;margin-top:6px;word-break:break-word}
+
+  footer{margin-top:60px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+  .toc{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 0}
+  .toc a{font-size:13px;background:var(--card);border:1px solid var(--border);padding:5px 12px;border-radius:999px;color:var(--muted)}
+  .toc a:hover{color:var(--brand);border-color:var(--brand);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <span class="tag">upstream-ops</span>
+    <h1>上游运维 · 请求网关 · 站长对账<br>三位一体的中转站管理后台</h1>
+    <p>一套自托管的系统，帮中转站站长盯住上游、转发请求、算清每一分钱。</p>
+    <div class="meta">
+      <span><b>后端</b> Go · Gin · GORM · SQLite</span>
+      <span><b>前端</b> React 19 · Vite · Tailwind</span>
+      <span><b>调度</b> robfig/cron</span>
+    </div>
+    <nav class="toc">
+      <a href="#arch">架构总览</a>
+      <a href="#monitor">① 上游监控</a>
+      <a href="#gateway">② 请求网关</a>
+      <a href="#recon">③ 站长对账</a>
+      <a href="#anchor">核心原则</a>
+      <a href="#tables">数据表清单</a>
+      <a href="#glossary">指标释义</a>
+    </nav>
+  </header>
+
+  <!-- ============ 三个子系统 ============ -->
+  <h2><span class="num">◆</span>三个子系统，各管一段</h2>
+  <p class="lead">整套系统由三块拼成，彼此独立又互相供数据。</p>
+  <div class="grid g3">
+    <div class="card">
+      <div class="icon ic-brand">📡</div>
+      <h3>① 上游监控</h3>
+      <p>定时登录每个上游面板，采集<b>余额 / 倍率 / 消费</b>，异常就通知你。</p>
+      <ul>
+        <li>余额每 15 分钟采一次</li>
+        <li>倍率每 30 分钟采一次</li>
+        <li>余额过低 / 倍率被改 → 推送</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="icon ic-purple">🔀</div>
+      <h3>② 请求网关</h3>
+      <p>对外提供 OpenAI / Anthropic 兼容接口，把请求转发到上游，并计费。</p>
+      <ul>
+        <li>分组 · 密钥 · 路由 · 直连</li>
+        <li>协议自动互转</li>
+        <li>每次调用落一条用量日志</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="icon ic-success">🧮</div>
+      <h3>③ 站长对账</h3>
+      <p>以「上游供应商」为记账主体，算清楚你到底赚了多少。</p>
+      <ul>
+        <li>上游充值 / 退款 / 扣减台账</li>
+        <li>上游余额与已用快照</li>
+        <li>利润 · 账账差异 · 消耗差异</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 架构图 ============ -->
+  <h2 id="arch"><span class="num">◆</span>架构总览</h2>
+  <p class="lead">左边是外部世界，中间是本系统，右边是数据库。数据从上游流入监控，从用户流入网关，最终汇进对账账本。</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 900 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+      <defs>
+        <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#94a3b8"/>
+        </marker>
+        <marker id="arwb" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#2563eb"/>
+        </marker>
+      </defs>
+
+      <!-- Column labels -->
+      <text x="105" y="24" text-anchor="middle" font-size="12" fill="#64748b" font-weight="600">外部</text>
+      <text x="450" y="24" text-anchor="middle" font-size="12" fill="#64748b" font-weight="600">本系统</text>
+      <text x="800" y="24" text-anchor="middle" font-size="12" fill="#64748b" font-weight="600">数据库</text>
+
+      <!-- Upstream panels -->
+      <rect x="20" y="60" width="170" height="120" rx="12" fill="#eff6ff" stroke="#bfdbfe"/>
+      <text x="105" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">上游供应商面板</text>
+      <text x="105" y="112" text-anchor="middle" font-size="11.5" fill="#3b82f6">咕咕鸟 · 100hub · 聪明 …</text>
+      <text x="105" y="132" text-anchor="middle" font-size="11.5" fill="#3b82f6">NewAPI / Sub2API</text>
+      <text x="105" y="158" text-anchor="middle" font-size="11" fill="#64748b">登录抓：余额 / 倍率</text>
+
+      <!-- Users -->
+      <rect x="20" y="250" width="170" height="120" rx="12" fill="#f5f3ff" stroke="#ddd6fe"/>
+      <text x="105" y="278" text-anchor="middle" font-size="14" font-weight="700" fill="#5b21b6">终端用户</text>
+      <text x="105" y="302" text-anchor="middle" font-size="11.5" fill="#7c3aed">OpenAI / Claude 客户端</text>
+      <text x="105" y="330" text-anchor="middle" font-size="11" fill="#64748b">发请求</text>
+
+      <!-- Monitoring box -->
+      <rect x="300" y="60" width="150" height="120" rx="12" fill="#fff" stroke="#e5e7eb"/>
+      <text x="375" y="92" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">① 监控</text>
+      <text x="375" y="116" text-anchor="middle" font-size="11" fill="#64748b">定时扫描</text>
+      <text x="375" y="136" text-anchor="middle" font-size="11" fill="#64748b">余额 / 倍率 / 消费</text>
+      <text x="375" y="160" text-anchor="middle" font-size="11" fill="#64748b">异常通知</text>
+
+      <!-- Gateway box -->
+      <rect x="300" y="250" width="150" height="120" rx="12" fill="#fff" stroke="#e5e7eb"/>
+      <text x="375" y="282" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">② 网关</text>
+      <text x="375" y="306" text-anchor="middle" font-size="11" fill="#64748b">协议互转</text>
+      <text x="375" y="326" text-anchor="middle" font-size="11" fill="#64748b">路由 / 计费</text>
+      <text x="375" y="350" text-anchor="middle" font-size="11" fill="#64748b">用量落库</text>
+
+      <!-- Reconciliation box -->
+      <rect x="300" y="155" width="150" height="70" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+      <text x="375" y="182" text-anchor="middle" font-size="14" font-weight="700" fill="#166534">③ 对账</text>
+      <text x="375" y="204" text-anchor="middle" font-size="11" fill="#16a34a">算钱 · 利润</text>
+
+      <!-- DB -->
+      <rect x="700" y="120" width="180" height="220" rx="12" fill="#fff" stroke="#e5e7eb"/>
+      <text x="790" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">SQLite</text>
+      <text x="790" y="178" text-anchor="middle" font-size="11.5" fill="#64748b">余额/消费快照</text>
+      <text x="790" y="200" text-anchor="middle" font-size="11.5" fill="#64748b">上游台账 · 快照</text>
+      <text x="790" y="222" text-anchor="middle" font-size="11.5" fill="#64748b">站内充值 · 用量</text>
+      <text x="790" y="244" text-anchor="middle" font-size="11.5" fill="#64748b">用户余额</text>
+      <text x="790" y="272" text-anchor="middle" font-size="11" fill="#94a3b8">采样点定期清理</text>
+      <text x="790" y="292" text-anchor="middle" font-size="11" fill="#94a3b8">日汇总永久保留</text>
+
+      <!-- Arrows -->
+      <line x1="190" y1="120" x2="298" y2="120" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arw)"/>
+      <text x="244" y="112" text-anchor="middle" font-size="10.5" fill="#64748b">抓余额</text>
+
+      <line x1="190" y1="300" x2="298" y2="300" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arw)"/>
+      <text x="244" y="292" text-anchor="middle" font-size="10.5" fill="#64748b">转发</text>
+
+      <line x1="450" y1="110" x2="698" y2="160" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="450" y1="300" x2="698" y2="260" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arw)"/>
+
+      <!-- Monitor -> Recon (balance feed) -->
+      <line x1="375" y1="180" x2="375" y2="225" stroke="#2563eb" stroke-width="2" marker-end="url(#arwb)" stroke-dasharray="5 4"/>
+      <text x="384" y="207" font-size="10.5" fill="#2563eb">余额自动入账</text>
+    </svg>
+  </div>
+
+  <!-- ============ 监控 ============ -->
+  <h2 id="monitor"><span class="num">①</span>上游监控</h2>
+  <p class="lead">定时登录每个上游面板，把「余额、倍率、消费」抓回来存成历史，异常就通知你。</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <h3>采什么 · 多久采</h3>
+      <table>
+        <tr><td>余额</td><td class="num">每 15 分钟</td></tr>
+        <tr><td>倍率</td><td class="num">每 30 分钟</td></tr>
+        <tr><td>今日/累计消费</td><td class="num">每 15 分钟</td></tr>
+        <tr><td>登录态 / 公告</td><td class="num">随扫描</td></tr>
+      </table>
+      <p style="font-size:13px;color:var(--muted);margin-top:4px">渠道支持 NewAPI 与 Sub2API 两种面板，自动识别。</p>
+    </div>
+    <div class="card">
+      <h3>什么情况会通知你</h3>
+      <ul>
+        <li><b>余额过低</b>：低于设定阈值（带冷却，不刷屏）</li>
+        <li><b>倍率变动</b>：上游偷偷改倍率，立刻抓出来</li>
+        <li><b>采集失败</b>：登录不上 / 面板挂了</li>
+        <li><b>订阅到期</b>：订阅制渠道的套餐快到期</li>
+      </ul>
+      <p style="font-size:13px;color:var(--muted);margin-top:8px">通知渠道支持 Telegram 等，可配前缀、去抖。</p>
+    </div>
+  </div>
+
+  <!-- ============ 网关 ============ -->
+  <h2 id="gateway"><span class="num">②</span>请求网关</h2>
+  <p class="lead">对外提供 OpenAI / Anthropic 兼容接口，把请求转发到上游，自动转换协议并计费。</p>
+
+  <div class="grid g3">
+    <div class="card">
+      <div class="icon ic-purple">🗂️</div>
+      <h3>分组 · 密钥</h3>
+      <p>把上游按分组管理，给用户签发密钥，按密钥限流/计费。</p>
+    </div>
+    <div class="card">
+      <div class="icon ic-purple">🔁</div>
+      <h3>协议互转</h3>
+      <p>OpenAI ↔ Anthropic ↔ Responses 之间自动转换，客户端用什么协议都能接。</p>
+    </div>
+    <div class="card">
+      <div class="icon ic-purple">📊</div>
+      <h3>用量落库</h3>
+      <p>每次调用记录 token 数、端点、耗时，供统计与对账取用。</p>
+    </div>
+  </div>
+
+  <!-- ============ 对账 ============ -->
+  <h2 id="recon"><span class="num">③</span>站长对账</h2>
+  <p class="lead">记账主体是<b>上游供应商（vendor）</b>，不是渠道。渠道通过「绑定」归属到某个上游，站内消费才算得到它头上。</p>
+
+  <h3>记账的三样东西</h3>
+  <div class="grid g3">
+    <div class="card">
+      <div class="icon ic-warning">💵</div>
+      <h3>充值台账 <span class="badge b-manual">手动</span></h3>
+      <p>你给上游充的钱（充值 / 退款 / 扣减）。只有你知道，记在流水里。</p>
+    </div>
+    <div class="card">
+      <div class="icon ic-success">⚖️</div>
+      <h3>余额快照 <span class="badge b-auto">自动</span></h3>
+      <p>上游当前余额，由监控自动采集，每天落一行。</p>
+    </div>
+    <div class="card">
+      <div class="icon ic-brand">📈</div>
+      <h3>站内消费 <span class="badge b-auto">自动</span></h3>
+      <p>你站内用户消耗的额度，从站内定时同步回来。</p>
+    </div>
+  </div>
+
+  <div class="callout brand" style="margin-top:22px">
+    <h4>累计已用 = 累计净充值 − 当前余额</h4>
+    <p>这是对账的核心恒等式。你充了多少（台账）、还剩多少（余额）一减，就是花掉了多少 —— 完全不依赖上游会不会清记录。</p>
+  </div>
+
+  <h3>利润是怎么算出来的</h3>
+  <div class="formula">
+<span class="c"># 单个上游</span>
+实际利润   = <span class="g">站内消费</span> − <span class="y">实际净充值</span>
+消耗差异   = <span class="g">站内消费</span> − <span class="y">上游已用</span>      <span class="c"># 倍率差，毛利润来源</span>
+账账差异   = 当前余额 − (净充值 − 上游已用)   <span class="c"># 应≈0，不为 0 说明账对不上</span>
+
+<span class="c"># 整站</span>
+预计已实现利润 = <span class="g">提现</span> − <span class="y">实际净充值</span> − 运营支出
+预计结算利润   = <span class="g">提现</span> − 外部未消费余额 − <span class="y">实际净充值</span> − 运营支出
+  </div>
+
+  <!-- ============ 核心原则 ============ -->
+  <h2 id="anchor"><span class="num">★</span>核心原则：余额是锚</h2>
+  <p class="lead">这是整套对账设计里最重要的一条。上游面板会清空充值 / 消费记录，但<b>余额永远是对的</b>。</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="icon ic-warning">🌊</div>
+      <h3>流量：会消失</h3>
+      <p>充值记录、消费记录 —— 上游一清就没了。<b>不能依赖它们</b>。</p>
+      <ul>
+        <li>充值 → 用自己的台账兜底</li>
+        <li>消费 → 用余额差反推</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="icon ic-success">⚓</div>
+      <h3>存量：永远准</h3>
+      <p>余额是「当下还剩多少」，上游不会清。<b>它是唯一的锚</b>。</p>
+      <ul>
+        <li>监控每 15 分钟采一次</li>
+        <li>自动落成每日快照</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout success" style="margin-top:20px">
+    <h4>怎么做到的</h4>
+    <p>系统每隔 15 分钟，把监控采到的上游余额<b>自动写进对账账本</b>，并顺手用「累计充值 − 余额」算出累计已用。所以：<b>余额不用手记、已用不用手抄，你只管记充值流水。</b></p>
+  </div>
+
+  <h3>快照策略：明细会删，汇总永留</h3>
+  <div class="steps">
+    <div class="step">
+      <h4>高频采样（明细）</h4>
+      <p>余额、消费每 15 分钟一个点。只用于画当天的曲线，<b>过期按策略自动删除</b>（余额留 90 天、日志留 30 天）。</p>
+    </div>
+    <div class="step">
+      <h4>日汇总（永久）</h4>
+      <p>每天收尾时，把当天的落成一行：<b>余额取末值、消费取总和</b>。这一行永久保留，是对账的根据。</p>
+    </div>
+    <div class="step">
+      <h4>流水（永久）</h4>
+      <p>充值、退款这类事件流水，<b>打死不删</b>。删了账就没了。</p>
+    </div>
+  </div>
+
+  <!-- ============ 数据表清单 ============ -->
+  <h2 id="tables"><span class="num">◆</span>数据表清单：哪些自动、哪些手动</h2>
+  <p class="lead">系统里所有存历史的表，一眼看清谁在写、要不要你操心。</p>
+
+  <h3>🟢 全自动 —— 你一次都不用碰</h3>
+  <table>
+    <thead><tr><th>表</th><th>记什么</th><th>频率</th><th>谁写</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">balance_snapshots</td><td>每个上游的余额</td><td>15 分钟</td><td><span class="badge b-auto">监控</span></td></tr>
+      <tr><td class="mono">cost_snapshots</td><td>每个上游的消费</td><td>15 分钟</td><td><span class="badge b-auto">监控</span></td></tr>
+      <tr><td class="mono">rate_snapshots</td><td>上游倍率</td><td>30 分钟</td><td><span class="badge b-auto">监控</span></td></tr>
+      <tr><td class="mono">rate_change_logs</td><td>倍率被改动的事件</td><td>变动时</td><td><span class="badge b-auto">监控</span></td></tr>
+      <tr><td class="mono">monitor_logs</td><td>每次采集成功 / 失败</td><td>每次</td><td><span class="badge b-auto">监控</span></td></tr>
+      <tr><td class="mono">channel_usage_stats</td><td>站内渠道每天消费</td><td>每天一行</td><td><span class="badge b-auto">同步</span></td></tr>
+      <tr><td class="mono">user_balance_snapshots</td><td>站内用户每天余额</td><td>每天一行</td><td><span class="badge b-auto">同步</span></td></tr>
+      <tr><td class="mono">topup_logs</td><td>站内用户充值流水</td><td>实时同步</td><td><span class="badge b-auto">同步</span></td></tr>
+      <tr><td class="mono">daily_topups</td><td>按天充值汇总（派生）</td><td>派生</td><td><span class="badge b-auto">派生</span></td></tr>
+      <tr><td class="mono">vendor_snapshots</td><td>上游余额 + 累计已用</td><td>每天一行</td><td><span class="badge b-auto">自动采集</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>🟡 手动 —— 只有这一样真该你记</h3>
+  <table>
+    <thead><tr><th>表</th><th>记什么</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono">vendor_ledger_entries</td>
+        <td>你给上游的<b>充值 / 退款 / 扣减</b></td>
+        <td>你自己充的钱，系统猜不到。这是账本的根本。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning">
+    <h4>为什么只有充值要手动</h4>
+    <p>余额 → 监控能自动采；消费 → 用「充值 − 余额」能自动算；只有「你往上游充了多少钱」这件事，系统无从得知，必须你记一笔。</p>
+  </div>
+
+  <!-- ============ 指标释义 ============ -->
+  <h2 id="glossary"><span class="num">◆</span>关键指标释义</h2>
+  <div class="kpi">
+    <div class="k"><div class="lbl">净充值</div><div class="f">充值 + 补款 − 退款 − 扣减</div></div>
+    <div class="k"><div class="lbl">上游已用</div><div class="f">累计净充值 − 当前余额</div></div>
+    <div class="k"><div class="lbl">站内消费</div><div class="f">你站内用户实际消耗的额度</div></div>
+    <div class="k"><div class="lbl">消耗差异（倍率差）</div><div class="f">站内消费 − 上游已用</div></div>
+    <div class="k"><div class="lbl">账账差异</div><div class="f">当前余额 − (净充值 − 上游已用)，应≈0</div></div>
+    <div class="k"><div class="lbl">实际利润</div><div class="f">站内消费 − 实际净充值</div></div>
+    <div class="k"><div class="lbl">预计已实现利润</div><div class="f">提现 − 实际净充值 − 运营支出</div></div>
+    <div class="k"><div class="lbl">预计结算利润</div><div class="f">提现 − 外部未消费余额 − 实际净充值 − 运营支出</div></div>
+  </div>
+
+  <footer>
+    <p>upstream-ops · 系统总览 &nbsp;|&nbsp; 上游运维 · 请求网关 · 站长对账</p>
+    <p style="margin-top:6px">本文档由系统自动梳理生成，如需调整请联系维护者。</p>
+  </footer>
+
+</div>
+</body>
+</html>

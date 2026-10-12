@@ -155,6 +155,8 @@ func main() {
 		return cfg.Reconciliation
 	})
 	sch.SetReconcileSync(reconcileRunner)
+	// 上游余额快照自动采集：把监控采到的余额落成对账的每日快照，免去手工记录。
+	sch.SetVendorSnapshotService(reconcile.NewVendorSnapshotService(accounting, channels))
 	if err := sch.Start(); err != nil {
 		log.Error("start scheduler failed", "err", err)
 		os.Exit(1)

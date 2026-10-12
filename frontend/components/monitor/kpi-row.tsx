@@ -85,7 +85,7 @@ export function KpiRow() {
       iconColor: "text-brand",
       footer: (
         <span className="text-muted-foreground">
-          {totalCost > 0 ? "全渠道累计实际扣费" : "暂无累计消费"}
+          {totalCost > 0 ? "全渠道累计（绑定上游取对账口径）" : "暂无累计消费"}
         </span>
       ),
     },

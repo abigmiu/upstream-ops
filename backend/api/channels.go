@@ -99,6 +99,13 @@ type channelUpdateInput struct {
 type channelOutput struct {
 	storage.Channel
 	UserID string `json:"user_id,omitempty"`
+
+	// 对账口径（仅当渠道已绑到某个上游且对账建过快照时才有）。
+	// 绑定存在时 TotalCost 会被替换成 ReconUsed，使监控页与对账页「累计消费」一致；
+	// 面板自报的原值保留在 PanelTotalCost 里做对照。
+	ReconUsed      *float64 `json:"recon_used,omitempty"`
+	ReconBalance   *float64 `json:"recon_balance,omitempty"`
+	PanelTotalCost *float64 `json:"panel_total_cost,omitempty"`
 }
 
 type channelRedeemInput struct {
@@ -233,22 +240,31 @@ var costNow = time.Now
 
 func channelOutputs(d *Deps, list []storage.Channel) []channelOutput {
 	now := costNow()
+	recon := reconUsageByChannel(d)
 	out := make([]channelOutput, 0, len(list))
 	for _, ch := range list {
-		out = append(out, channelOutputAt(d, ch, now))
+		out = append(out, channelOutputAt(d, ch, now, recon))
 	}
 	return out
 }
 
 func channelOutputFor(d *Deps, ch storage.Channel) channelOutput {
-	return channelOutputAt(d, ch, costNow())
+	return channelOutputAt(d, ch, costNow(), reconUsageByChannel(d))
 }
 
 // channelOutputAt 组装渠道输出；TodayCost 按 now 做跨天归零（只影响响应，不回写数据库）。
-func channelOutputAt(d *Deps, ch storage.Channel, now time.Time) channelOutput {
+// 若渠道已绑到上游且对账有快照，则把「累计消费」换成对账口径，保证与对账页一致。
+func channelOutputAt(d *Deps, ch storage.Channel, now time.Time, recon map[string]reconChannelUsage) channelOutput {
 	out := channelOutput{Channel: ch}
 	out.TodayCost = ch.EffectiveTodayCost(now)
 	out.UserID = channelUserID(d, &ch)
+	if r, ok := reconUsageForChannel(recon, ch.ID); ok {
+		used, bal := r.Used, r.Balance
+		out.PanelTotalCost = out.TotalCost // 面板自报原值，留作对照
+		out.ReconUsed = &used
+		out.ReconBalance = &bal
+		out.TotalCost = &used // 显示值改用对账口径
+	}
 	return out
 }
 

@@ -137,6 +137,23 @@ func (a *Accounting) MergeVendorIntoDeleted(vendorID uint) error {
 		if target.ID == source.ID {
 			return errors.New("不能把已删除上游合并到自己")
 		}
+		// vendor_snapshots / upstream_channel_bindings 带 (vendor, 自然键) 唯一约束。
+		// 若源与目标在同一维度上重复，直接重映射 vendor_id 会撞唯一键，
+		// 故先删掉与目标重复的源行（目标作为存活方保留其数据）。
+		if err := tx.Exec(`
+			DELETE FROM vendor_snapshots
+			WHERE vendor_id = ? AND day IN (
+				SELECT day FROM vendor_snapshots WHERE vendor_id = ?)`,
+			source.ID, target.ID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`
+			DELETE FROM upstream_channel_bindings
+			WHERE vendor_id = ? AND upstream_channel_id IN (
+				SELECT upstream_channel_id FROM upstream_channel_bindings WHERE vendor_id = ?)`,
+			source.ID, target.ID).Error; err != nil {
+			return err
+		}
 		remaps := []struct {
 			model any
 			table string
@@ -418,6 +435,68 @@ func (a *Accounting) UpsertVendorSnapshot(in VendorSnapshotInput) (*VendorSnapsh
 		return nil, err
 	}
 	return &out, nil
+}
+
+// VendorUsagePoint 一个上游的余额锚定口径截点。
+type VendorUsagePoint struct {
+	Used    float64 // 累计已用（对账页「上游已用」同源，取 vendor_snapshots.used_amount）
+	Balance float64 // 当前余额（vendor_snapshots.current_balance）
+}
+
+// LatestVendorUsage 返回每个上游最新一条快照的 (累计已用, 当前余额)。
+//
+// 与对账引擎 buildVendors 读的是同一列（vendor_snapshots 最新行），因此监控页
+// 用这个口径展示「累计消费」时，与对账页「上游已用」严格一致，不会两边各算一套。
+func (a *Accounting) LatestVendorUsage() (map[uint]VendorUsagePoint, error) {
+	var rows []struct {
+		VendorID       uint
+		UsedAmount     float64
+		CurrentBalance float64
+	}
+	// 每个 vendor 取 captured_at 最新（并列取 id 最大）的一条，与引擎 ORDER BY 一致。
+	err := a.db.Raw(`
+		SELECT vs.vendor_id, vs.used_amount, vs.current_balance
+		FROM vendor_snapshots vs
+		WHERE vs.id = (
+			SELECT v2.id FROM vendor_snapshots v2
+			WHERE v2.vendor_id = vs.vendor_id
+			ORDER BY v2.captured_at DESC, v2.id DESC
+			LIMIT 1
+		)`).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]VendorUsagePoint, len(rows))
+	for _, r := range rows {
+		out[r.VendorID] = VendorUsagePoint{Used: r.UsedAmount, Balance: r.CurrentBalance}
+	}
+	return out, nil
+}
+
+// NetRechargeByVendor 返回每个上游的「累计净到账额」= Σ(充值/补款) − Σ(退款/扣减)。
+//
+// 上游面板会清空记录，但「你充了多少」只有你自己知道（记在流水台账里），
+// 所以净到账额以台账为准。配合监控自动采集的余额，就能反推：
+//
+//	累计已用 = 净到账额 − 当前余额
+func (a *Accounting) NetRechargeByVendor() (map[uint]float64, error) {
+	var rows []struct {
+		VendorID uint
+		Net      float64
+	}
+	err := a.db.Raw(`
+		SELECT vendor_id,
+		       SUM(CASE WHEN entry_type IN ('充值','补款') THEN amount ELSE -amount END) AS net
+		FROM vendor_ledger_entries
+		GROUP BY vendor_id`).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]float64, len(rows))
+	for _, r := range rows {
+		out[r.VendorID] = Round6(r.Net)
+	}
+	return out, nil
 }
 
 // VendorSnapshotRow 快照列表行（带上游名与上一条余额）。

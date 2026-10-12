@@ -1251,7 +1251,24 @@ export function ChannelCards() {
                       </Tooltip>
                     </StatTile>
                     <StatTile label="今日消费">{money(c.today_cost)}</StatTile>
-                    <StatTile label="累计消费">{money(c.total_cost)}</StatTile>
+                    <StatTile label="累计消费">
+                      {c.panel_total_cost != null ? (
+                        <Tooltip delayDuration={150}>
+                          <TooltipTrigger asChild>
+                            <span className="block truncate">{money(c.total_cost)}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            <div>{"对账口径（台账 + 余额反推）"}</div>
+                            <div className="text-muted-foreground">
+                              {"面板自报："}
+                              {money(c.panel_total_cost)}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        money(c.total_cost)
+                      )}
+                    </StatTile>
                     <StatTile label="阈值 / 状态">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <Tooltip delayDuration={150}>

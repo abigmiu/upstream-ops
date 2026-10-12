@@ -33,6 +33,7 @@ import { Empty, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
 import { apiFetch } from "@/lib/api"
 import { dateTime, money, shortTime } from "@/lib/format"
 import {
+  useChannelUsageStats,
   useDailyTopups,
   useOperatingExpenses,
   useThirdPartyEntries,
@@ -186,9 +187,9 @@ export function LedgerTab() {
 function EntriesPanel() {
   const entries = useVendorEntries()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm">{"上游流水（追加式，余额自动推导）"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"上游流水（追加式，余额自动推导）"}</CardTitle>
         <AddDialog
           title="新增上游流水"
           label="新增流水"
@@ -298,19 +299,18 @@ function EntriesPanel() {
 function SnapshotsPanel() {
   const snapshots = useVendorSnapshots()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm">{"上游余额快照（应对上游清空记录）"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"上游余额快照"}</CardTitle>
         <AddDialog
-          title="新增上游快照"
-          label="新增快照"
+          title="手动补录上游快照"
+          label="手动补录"
           onDone={() => snapshots.refetch()}
           onSubmit={async (s) => {
             await apiFetch("/reconciliation/vendor-snapshots", {
               method: "POST",
               body: JSON.stringify({
                 vendor_id: Number(s.vendor_id),
-                used_amount: Number(s.used_amount),
                 current_balance: Number(s.current_balance),
                 note: s.note || "",
               }),
@@ -322,9 +322,6 @@ function SnapshotsPanel() {
               <Field label="上游">
                 <VendorSelect value="" onChange={(v) => set({ vendor_id: v })} />
               </Field>
-              <Field label="已用金额">
-                <Input type="number" step="0.000001" onChange={(e) => set({ used_amount: e.target.value })} />
-              </Field>
               <Field label="当前余额">
                 <Input type="number" step="0.000001" onChange={(e) => set({ current_balance: e.target.value })} />
               </Field>
@@ -335,11 +332,14 @@ function SnapshotsPanel() {
           )}
         </AddDialog>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="space-y-3 pt-0">
+        <p className="text-xs text-muted-foreground">
+          {"余额由监控自动采集，累计已用按「累计充值 − 当前余额」自动算出，无需手工记录。仅对没有监控渠道的上游才需手动补录。"}
+        </p>
         {(snapshots.data ?? []).length === 0 ? (
           <Empty>
             <EmptyTitle>{"暂无快照"}</EmptyTitle>
-            <EmptyDescription>{"每天记录上游的累计已用与余额，用于校准被上游清空的数据。"}</EmptyDescription>
+            <EmptyDescription>{"绑定监控渠道后，余额会随监控自动落成每日快照。"}</EmptyDescription>
           </Empty>
         ) : (
           <div className="max-h-[32rem] overflow-y-auto">
@@ -370,8 +370,8 @@ function SnapshotsPanel() {
                           (delta == null
                             ? "text-muted-foreground"
                             : delta >= 0
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-rose-600 dark:text-rose-400")
+                              ? "text-success"
+                              : "text-danger")
                         }
                       >
                         {delta == null ? "—" : money(delta)}
@@ -409,9 +409,9 @@ function TopupsPanel() {
 
   return (
     <div className="space-y-4">
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"按天现金充值汇总"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"按天现金充值汇总"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {(daily.data ?? []).length === 0 ? (
@@ -439,9 +439,9 @@ function TopupsPanel() {
         </CardContent>
       </Card>
 
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"站内充值日志（可标记非现金）"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"站内充值日志（可标记非现金）"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {(topups.data ?? []).length === 0 ? (
@@ -497,9 +497,9 @@ function TopupsPanel() {
 function UsagePanel() {
   const usage = useChannelUsageStats()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{"渠道归属消费（站内消费归属到上游，每天一行）"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"渠道归属消费（站内消费归属到上游，每天一行）"}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         {(usage.data ?? []).length === 0 ? (
@@ -550,9 +550,9 @@ const TP_TYPES = [
 function ThirdPartyPanel() {
   const entries = useThirdPartyEntries()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm">{"第三方平台充值 / 提现"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"第三方平台充值 / 提现"}</CardTitle>
         <AddDialog
           title="新增第三方记录"
           label="新增记录"
@@ -624,8 +624,8 @@ function ThirdPartyPanel() {
                   <TableCell className="whitespace-nowrap text-muted-foreground">{dateTime(e.occurred_at)}</TableCell>
                   <TableCell className="font-medium">{e.platform_name || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={e.entry_type === "withdrawal" ? "destructive" : "default"}>
-                      {e.entry_type === "withdrawal" ? "提现" : "充值"}
+                    <Badge variant={e.entry_type === "提现" ? "destructive" : "default"}>
+                      {e.entry_type}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{money(e.amount)}</TableCell>
@@ -643,9 +643,9 @@ function ThirdPartyPanel() {
 function ExpensesPanel() {
   const expenses = useOperatingExpenses()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm">{"运营支出"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"运营支出"}</CardTitle>
         <AddDialog
           title="新增运营支出"
           label="新增支出"
@@ -715,9 +715,9 @@ function ExpensesPanel() {
 function UsersPanel() {
   const users = useUserBalanceSnapshots()
   return (
-    <Card className="gap-2">
+    <Card className="border border-border py-4 shadow-none sm:py-6">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{"用户余额快照（自助用户标记影响外部口径）"}</CardTitle>
+        <CardTitle className="text-base font-semibold">{"用户余额快照（自助用户标记影响外部口径）"}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         {(users.data ?? []).length === 0 ? (

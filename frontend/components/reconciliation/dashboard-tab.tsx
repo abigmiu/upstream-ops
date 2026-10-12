@@ -10,6 +10,17 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Activity,
+  ArrowDownToLine,
+  Banknote,
+  Calculator,
+  Coins,
+  Receipt,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Empty, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
 import { money, dateTime } from "@/lib/format"
@@ -44,24 +55,24 @@ export function DashboardTab() {
     const s = data.summary
     const ub = data.userBalance
     return [
-      { label: "站内充值（现金）", value: money(s.total_topup), hint: `自助 ${money(s.total_self_topup)} · 外部 ${money(s.total_external_topup)}` },
-      { label: "提现", value: money(s.total_withdrawal) },
-      { label: "站内归属消费", value: money(s.total_usage) },
-      { label: "运营支出", value: money(s.total_operating_expense) },
-      { label: "上游余额合计", value: money(s.total_vendor_balance) },
-      { label: "上游已用合计", value: money(s.total_vendor_used) },
-      { label: "上游实际净充值", value: money(s.total_actual_recharge_net) },
-      { label: "上游实际利润", value: money(s.total_actual_profit), tone: signedTone(s.total_actual_profit) },
-      { label: "用户余额合计", value: money(s.total_user_remaining), hint: `自助 ${money(s.total_self_remaining)} · 外部 ${money(s.total_external_remaining)}` },
-      { label: "用户已用合计", value: money(s.total_user_used), hint: `自助 ${money(s.total_self_used)} · 外部 ${money(s.total_external_used)}` },
-      { label: "预计已实现利润", value: money(s.estimated_realized_profit), tone: signedTone(s.estimated_realized_profit), hint: "提现 − 净充值 − 运营支出" },
-      { label: "预计结算利润", value: money(s.estimated_settlement_profit), tone: signedTone(s.estimated_settlement_profit), hint: `再扣外部未消费余额 ${money(ub.externalRemaining)}` },
+      { label: "站内充值（现金）", value: money(s.total_topup), hint: `自助 ${money(s.total_self_topup)} · 外部 ${money(s.total_external_topup)}`, icon: Wallet, iconTone: "bg-brand/10 text-brand" },
+      { label: "提现", value: money(s.total_withdrawal), icon: Banknote, iconTone: "bg-brand/10 text-brand" },
+      { label: "站内归属消费", value: money(s.total_usage), icon: Activity, iconTone: "bg-warning/10 text-warning" },
+      { label: "运营支出", value: money(s.total_operating_expense), icon: Receipt, iconTone: "bg-muted text-muted-foreground" },
+      { label: "上游余额合计", value: money(s.total_vendor_balance), icon: Coins, iconTone: "bg-brand/10 text-brand" },
+      { label: "上游已用合计", value: money(s.total_vendor_used), icon: TrendingUp, iconTone: "bg-warning/10 text-warning" },
+      { label: "上游实际净充值", value: money(s.total_actual_recharge_net), icon: ArrowDownToLine, iconTone: "bg-brand/10 text-brand" },
+      { label: "上游实际利润", value: money(s.total_actual_profit), tone: signedTone(s.total_actual_profit), icon: TrendingUp, iconTone: "bg-success/10 text-success" },
+      { label: "用户余额合计", value: money(s.total_user_remaining), hint: `自助 ${money(s.total_self_remaining)} · 外部 ${money(s.total_external_remaining)}`, icon: Users, iconTone: "bg-brand/10 text-brand" },
+      { label: "用户已用合计", value: money(s.total_user_used), hint: `自助 ${money(s.total_self_used)} · 外部 ${money(s.total_external_used)}`, icon: Users, iconTone: "bg-warning/10 text-warning" },
+      { label: "预计已实现利润", value: money(s.estimated_realized_profit), tone: signedTone(s.estimated_realized_profit), hint: "提现 − 净充值 − 运营支出", icon: Calculator, iconTone: "bg-success/10 text-success" },
+      { label: "预计结算利润", value: money(s.estimated_settlement_profit), tone: signedTone(s.estimated_settlement_profit), hint: `再扣外部未消费余额 ${money(ub.externalRemaining)}`, icon: Calculator, iconTone: "bg-success/10 text-success" },
     ]
   }, [data])
 
   return (
     <div className="space-y-4">
-      <Card className="gap-0 p-3">
+      <Card className="border border-border p-3 shadow-none">
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">开始日期</label>
@@ -71,7 +82,7 @@ export function DashboardTab() {
             <label className="text-xs text-muted-foreground">结束日期</label>
             <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-8 w-36" />
           </div>
-          <Button size="sm" variant="secondary" onClick={() => setRange({ start, end })}>
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setRange({ start, end })}>
             {"应用"}
           </Button>
           <Button
@@ -120,11 +131,11 @@ export function DashboardTab() {
       ) : null}
 
       {data ? (
-        <Card className="gap-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{"用户余额快照"}</CardTitle>
+        <Card className="border border-border py-4 shadow-none sm:py-6">
+          <CardHeader className="flex shrink-0 flex-row items-center justify-between px-4 pb-2 sm:px-6">
+            <CardTitle className="text-base font-semibold">{"用户余额快照"}</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="px-4 sm:px-6">
             <div className="mb-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
               <div>
                 <div className="text-muted-foreground">{"采集时间"}</div>
@@ -149,11 +160,11 @@ export function DashboardTab() {
         </Card>
       ) : null}
 
-      <Card className="gap-2">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"上游对账明细"}</CardTitle>
+      <Card className="border border-border py-4 shadow-none sm:py-6">
+        <CardHeader className="flex shrink-0 flex-row items-center justify-between px-4 pb-2 sm:px-6">
+          <CardTitle className="text-base font-semibold">{"上游对账明细"}</CardTitle>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="px-4 sm:px-6">
           {!data ? (
             <Empty>
               <EmptyTitle>{"暂无数据"}</EmptyTitle>
@@ -197,7 +208,7 @@ export function DashboardTab() {
                       <TableCell
                         className={
                           "text-right tabular-nums " +
-                          (Math.abs(v.ledgerDrift) > 0.01 ? "text-rose-600 dark:text-rose-400" : "")
+                          (Math.abs(v.ledgerDrift) > 0.01 ? "text-danger" : "")
                         }
                       >
                         {money(v.ledgerDrift)}
@@ -206,7 +217,7 @@ export function DashboardTab() {
                       <TableCell
                         className={
                           "text-right tabular-nums " +
-                          (Math.abs(v.theoreticalSpread) > 0.01 ? "text-amber-600 dark:text-amber-400" : "")
+                          (Math.abs(v.theoreticalSpread) > 0.01 ? "text-warning" : "")
                         }
                       >
                         {money(v.theoreticalSpread)}
@@ -214,7 +225,7 @@ export function DashboardTab() {
                       <TableCell
                         className={
                           "text-right tabular-nums " +
-                          (v.actualProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")
+                          (v.actualProfit >= 0 ? "text-success" : "text-danger")
                         }
                       >
                         {money(v.actualProfit)}

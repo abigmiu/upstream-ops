@@ -74,9 +74,9 @@ export function JobsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"同步任务"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"同步任务"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -107,9 +107,9 @@ export function JobsTab() {
         </CardContent>
       </Card>
 
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"自助用户名单（每行一个用户名）"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"自助用户名单（每行一个用户名）"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pt-0">
           <Textarea
@@ -127,9 +127,9 @@ export function JobsTab() {
         </CardContent>
       </Card>
 
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"同步日志（每天一行）"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"同步日志（每天一行）"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {logs.loading && !logs.data ? (

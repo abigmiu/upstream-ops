@@ -83,11 +83,11 @@ export function ConfigTab() {
   }
 
   return (
-    <Card className="gap-3">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{"对账站点（NewAPI）配置"}</CardTitle>
+    <Card className="border border-border py-4 shadow-none sm:py-6">
+      <CardHeader className="flex shrink-0 flex-row items-center justify-between px-4 pb-2 sm:px-6">
+        <CardTitle className="text-base font-semibold">{"对账站点（NewAPI）配置"}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4 pt-0">
+      <CardContent className="space-y-4 px-4 sm:px-6">
         <div className="flex items-center justify-between rounded-md border p-3">
           <div>
             <div className="text-sm font-medium">{"启用定时同步"}</div>

@@ -29,6 +29,12 @@ type Scheduler struct {
 	gatewayResort gatewayRateResortService
 	proxy         config.ProxyConfig
 	reconcileSync reconcileSyncService
+	vendorSnap    vendorSnapshotService
+}
+
+// vendorSnapshotService 把监控采到的上游余额落成对账快照（实现见 reconcile 包）。
+type vendorSnapshotService interface {
+	SyncFromMonitoring() (int, error)
 }
 
 // gatewayRateResortService 倍率扫描后重排开启了「渠道分组价格倍率重排」的网关组。
@@ -88,6 +94,11 @@ func (s *Scheduler) Start() error {
 			return err
 		}
 	}
+	if s.cfg.VendorSnapshotCron != "" && s.vendorSnap != nil {
+		if _, err := s.cron.AddFunc(s.cfg.VendorSnapshotCron, s.runVendorSnapshot); err != nil {
+			return err
+		}
+	}
 	if s.cfg.Retention.Cron != "" && s.hasRetention() {
 		if _, err := s.cron.AddFunc(s.cfg.Retention.Cron, s.runRetention); err != nil {
 			return err
@@ -98,6 +109,7 @@ func (s *Scheduler) Start() error {
 		"balanceCron", s.cfg.BalanceCron,
 		"rateCron", s.cfg.RateCron,
 		"reconcileCron", s.cfg.ReconcileCron,
+		"vendorSnapshotCron", s.cfg.VendorSnapshotCron,
 		"retentionCron", s.cfg.Retention.Cron,
 		"concurrency", s.cfg.Concurrency,
 	)
@@ -109,6 +121,11 @@ func (s *Scheduler) SetReconcileSync(svc reconcileSyncService) {
 	s.reconcileSync = svc
 }
 
+// SetVendorSnapshotService 注入上游余额快照自动采集服务（在 Start 前调用）。
+func (s *Scheduler) SetVendorSnapshotService(svc vendorSnapshotService) {
+	s.vendorSnap = svc
+}
+
 // runReconcile 执行一次对账增量同步。
 func (s *Scheduler) runReconcile() {
 	if s.reconcileSync == nil {
@@ -118,6 +135,16 @@ func (s *Scheduler) runReconcile() {
 	defer cancel()
 	if err := s.reconcileSync.RunIncremental(ctx); err != nil {
 		s.log.Warn("reconcile incremental sync failed", "err", err)
+	}
+}
+
+// runVendorSnapshot 把监控采到的上游余额落成当天的对账快照（幂等，取当天末值）。
+func (s *Scheduler) runVendorSnapshot() {
+	if s.vendorSnap == nil {
+		return
+	}
+	if n, err := s.vendorSnap.SyncFromMonitoring(); err != nil {
+		s.log.Warn("vendor snapshot sync failed", "err", err, "written", n)
 	}
 }
 

@@ -181,9 +181,9 @@ export function ChannelsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm">{"渠道 → 上游绑定（当前生效）"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"渠道 → 上游绑定（当前生效）"}</CardTitle>
           <BindingDialog onDone={() => bindings.refetch()} />
         </CardHeader>
         <CardContent className="pt-0">
@@ -233,9 +233,9 @@ export function ChannelsTab() {
         </CardContent>
       </Card>
 
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"上游渠道 → 上游绑定（NewAPI 侧）"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"上游渠道 → 上游绑定（NewAPI 侧）"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {(upstreamBindings.data ?? []).length === 0 ? (
@@ -274,9 +274,9 @@ export function ChannelsTab() {
         </CardContent>
       </Card>
 
-      <Card className="gap-2">
+      <Card className="border border-border py-4 shadow-none sm:py-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{"绑定变更历史"}</CardTitle>
+          <CardTitle className="text-base font-semibold">{"绑定变更历史"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {(history.data ?? []).length === 0 ? (
