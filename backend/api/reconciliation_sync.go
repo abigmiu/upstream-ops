@@ -203,28 +203,11 @@ func syncBackfillUsageHandler(c *gin.Context, d *Deps) {
 	}
 	defer svc.Close()
 
-	loc := storage.Shanghai
-	start := time.Date(2000, 1, 1, 0, 0, 0, 0, loc)
-	if in.StartDate != "" {
-		if start, err = time.ParseInLocation("2006-01-02", in.StartDate, loc); err != nil {
-			fail(c, http.StatusBadRequest, err)
-			return
-		}
-	}
-	now := time.Now().In(loc)
-	endDay := now
-	if in.EndDate != "" {
-		if endDay, err = time.ParseInLocation("2006-01-02", in.EndDate, loc); err != nil {
-			fail(c, http.StatusBadRequest, err)
-			return
-		}
-	}
-	end := endDay.Add(24 * time.Hour) // 右开区间，含 end 当天
-	// 覆盖到当天时，只回填到「此刻」：若写成当天 23:59:59（未来），
-	// 之后每次增量窗口的 end_at 都比它小，会被幂等保护挡住而漏掉当天后续用量。
-	reachedPresent := !end.After(now)
-	if reachedPresent {
-		end = now
+	now := time.Now().In(storage.Shanghai)
+	start, end, reachedPresent, err := resolveBackfillRange(now, in.StartDate, in.EndDate)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
@@ -256,6 +239,32 @@ func testNewAPIHandler(c *gin.Context, d *Deps) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// resolveBackfillRange 解析回填区间：start 缺省 2000-01-01，end 缺省今天，均为上海时区整天。
+// 返回右开区间 [start, end)，以及该区间是否覆盖到 now（用来决定是否推进同步游标）。
+//
+// 覆盖到 now 时把 end 截到 now：若写成当天 23:59:59（未来），之后每次增量窗口的 end_at
+// 都比它小，会被 SaveChannelUsageStats 的幂等保护挡住，导致当天后续用量一直漏掉。
+func resolveBackfillRange(now time.Time, startStr, endStr string) (start, end time.Time, reachedPresent bool, err error) {
+	loc := now.Location()
+	start = time.Date(2000, 1, 1, 0, 0, 0, 0, loc)
+	if startStr != "" {
+		if start, err = time.ParseInLocation("2006-01-02", startStr, loc); err != nil {
+			return
+		}
+	}
+	endDay := now
+	if endStr != "" {
+		if endDay, err = time.ParseInLocation("2006-01-02", endStr, loc); err != nil {
+			return
+		}
+	}
+	end = endDay.Add(24 * time.Hour) // 右开区间，含 end 当天
+	if reachedPresent = end.After(now); reachedPresent {
+		end = now
+	}
+	return
 }
 
 // parseDateRange 解析 [start, end] 日期（YYYY-MM-DD，上海时区）。
