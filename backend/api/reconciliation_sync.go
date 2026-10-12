@@ -211,7 +211,8 @@ func syncBackfillUsageHandler(c *gin.Context, d *Deps) {
 			return
 		}
 	}
-	endDay := time.Now().In(loc)
+	now := time.Now().In(loc)
+	endDay := now
 	if in.EndDate != "" {
 		if endDay, err = time.ParseInLocation("2006-01-02", in.EndDate, loc); err != nil {
 			fail(c, http.StatusBadRequest, err)
@@ -219,6 +220,12 @@ func syncBackfillUsageHandler(c *gin.Context, d *Deps) {
 		}
 	}
 	end := endDay.Add(24 * time.Hour) // 右开区间，含 end 当天
+	// 覆盖到当天时，只回填到「此刻」：若写成当天 23:59:59（未来），
+	// 之后每次增量窗口的 end_at 都比它小，会被幂等保护挡住而漏掉当天后续用量。
+	reachedPresent := !end.After(now)
+	if reachedPresent {
+		end = now
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
@@ -230,6 +237,10 @@ func syncBackfillUsageHandler(c *gin.Context, d *Deps) {
 		return
 	}
 	completedAt := time.Now()
+	// 回填已覆盖到此刻：把游标推进到现在，避免后续增量把已回填的区间再加一遍。
+	if reachedPresent {
+		d.Accounting.SetSyncCursor(completedAt)
+	}
 	entry := syncLogFromResult("backfill-usage", "manual", startedAt, completedAt, start, end, 0, n, 0, "")
 	if _, err := d.Accounting.CreateSyncTaskLog(entry); err != nil {
 		fail(c, http.StatusInternalServerError, err)

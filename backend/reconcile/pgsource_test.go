@@ -12,17 +12,9 @@ import (
 
 // fakeUsageSource 是 UsageSource 的测试替身：无需真实 PostgreSQL。
 type fakeUsageSource struct {
-	byChannel map[uint]float64
-	byDay     []ChannelUsageDay
-	err       error
-	closed    bool
-}
-
-func (f *fakeUsageSource) UsageByChannel(context.Context, time.Time, time.Time) (map[uint]float64, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.byChannel, nil
+	byDay  []ChannelUsageDay
+	err    error
+	closed bool
 }
 
 func (f *fakeUsageSource) UsageByChannelDay(context.Context, time.Time, time.Time) ([]ChannelUsageDay, error) {
@@ -33,6 +25,9 @@ func (f *fakeUsageSource) UsageByChannelDay(context.Context, time.Time, time.Tim
 }
 
 func (f *fakeUsageSource) Close() error { f.closed = true; return nil }
+
+// today 返回当前上海时区日期（YYYY-MM-DD）。
+func today() string { return time.Now().In(storage.Shanghai).Format("2006-01-02") }
 
 // bindVendorFor 建一个上游并把渠道绑上去（消费只有绑定后才会计入）。
 func bindVendorFor(t *testing.T, acc *storage.Accounting, channelID uint, name string) *storage.Vendor {
@@ -57,7 +52,7 @@ func TestSyncWindowPrefersPGSource(t *testing.T) {
 	bindVendorFor(t, acc, 1, "渠道5-【GPT】 Pro")
 
 	client := NewNewAPIClient(NewAPIClientConfig{SiteURL: srv.URL, Token: "tok", UserID: "1", QuotaPerUSD: 500000})
-	pg := &fakeUsageSource{byChannel: map[uint]float64{1: 100}}
+	pg := &fakeUsageSource{byDay: []ChannelUsageDay{{ChannelID: 1, Day: today(), Amount: 100}}}
 	svc := NewSyncService(client, acc, SyncConfig{QuotaPerUSD: 500000, PG: pg})
 
 	if _, err := svc.SyncWindow(context.Background(), time.Now().Add(-time.Hour), time.Now(), "accumulate"); err != nil {
@@ -148,6 +143,38 @@ func TestBackfillUsageFromPG(t *testing.T) {
 	rows2, _ := acc.ListChannelUsageStats()
 	if len(rows2) != 2 {
 		t.Fatalf("rows after rerun = %d, want 2 (idempotent)", len(rows2))
+	}
+}
+
+// 跨天窗口（如首次同步 / 增量追赶）：各天用量归到各自那天，不堆到窗口起始日。
+func TestSyncWindowAttributesAcrossDays(t *testing.T) {
+	db := newDB(t)
+	acc := storage.NewAccounting(db)
+	srv := newFakeNewAPI(t)
+	bindVendorFor(t, acc, 5, "ch5")
+
+	client := NewNewAPIClient(NewAPIClientConfig{SiteURL: srv.URL, Token: "tok", UserID: "1", QuotaPerUSD: 500000})
+	pg := &fakeUsageSource{byDay: []ChannelUsageDay{
+		{ChannelID: 5, Day: "2026-07-01", Amount: 10},
+		{ChannelID: 5, Day: "2026-07-02", Amount: 20},
+	}}
+	svc := NewSyncService(client, acc, SyncConfig{QuotaPerUSD: 500000, PG: pg})
+
+	start := time.Date(2026, 6, 30, 0, 0, 0, 0, storage.Shanghai)
+	end := time.Date(2026, 7, 3, 0, 0, 0, 0, storage.Shanghai)
+	if _, err := svc.SyncWindow(context.Background(), start, end, "accumulate"); err != nil {
+		t.Fatalf("sync window: %v", err)
+	}
+	rows, err := acc.ListChannelUsageStats()
+	if err != nil {
+		t.Fatalf("list usage: %v", err)
+	}
+	got := map[string]float64{}
+	for _, r := range rows {
+		got[r.Day] = r.Amount
+	}
+	if len(rows) != 2 || got["2026-07-01"] != 10 || got["2026-07-02"] != 20 {
+		t.Fatalf("cross-day attribution wrong: %#v", got)
 	}
 }
 

@@ -166,28 +166,51 @@ func (s *SyncService) syncUsage(ctx context.Context, start, end time.Time, mode 
 	return s.syncUsageFromHTTP(ctx, start, end, mode)
 }
 
-// syncUsageFromPG 直连 PostgreSQL，一条 GROUP BY 汇总全部渠道的消费。
-// 仅写入已绑定渠道（SaveChannelUsageStats 内部会跳过无绑定渠道）。
+// syncUsageFromPG 直连 PostgreSQL 汇总消费，按 (渠道, 上海日) 逐天落行。
+//
+// 无论 accumulate 还是 replace 都按天写入：窗口可能跨天（增量追赶 / 首次同步），
+// 逐日归类才不会把多天用量堆到窗口起始那一天。
 func (s *SyncService) syncUsageFromPG(ctx context.Context, start, end time.Time, mode string) (int, error) {
-	usage, err := s.cfg.PG.UsageByChannel(ctx, start, end)
+	days, err := s.cfg.PG.UsageByChannelDay(ctx, start, end)
 	if err != nil {
 		return 0, err
 	}
-	if len(usage) == 0 {
+	if len(days) == 0 {
 		return 0, nil
 	}
 	names, err := s.channelNameMap()
 	if err != nil {
 		return 0, err
 	}
-	inputs := make([]storage.ChannelUsageInput, 0, len(usage))
-	for chID, amount := range usage {
-		inputs = append(inputs, storage.ChannelUsageInput{
-			ChannelID: chID, ChannelName: names[chID],
-			Amount: amount, StartAt: start, EndAt: end,
+	byDay := make(map[string][]storage.ChannelUsageInput)
+	for _, d := range days {
+		dayStart, err := time.ParseInLocation("2006-01-02", d.Day, shanghaiZone())
+		if err != nil {
+			continue
+		}
+		// 与查询区间求交：跨天窗口里每一天只落自己那一段。
+		segStart := dayStart
+		if segStart.Before(start) {
+			segStart = start
+		}
+		segEnd := dayStart.Add(24*time.Hour - time.Second)
+		if segEnd.After(end) {
+			segEnd = end
+		}
+		byDay[d.Day] = append(byDay[d.Day], storage.ChannelUsageInput{
+			ChannelID: d.ChannelID, ChannelName: names[d.ChannelID],
+			Amount: d.Amount, StartAt: segStart, EndAt: segEnd,
 		})
 	}
-	return s.acc.SaveChannelUsageStats(inputs, mode)
+	written := 0
+	for _, inputs := range byDay {
+		n, err := s.acc.SaveChannelUsageStats(inputs, mode)
+		if err != nil {
+			return written, err
+		}
+		written += n
+	}
+	return written, nil
 }
 
 // syncUsageFromHTTP 逐渠道 HTTP 拉取消费（旧路径；无 PG 时的回退）。
@@ -235,45 +258,18 @@ func (s *SyncService) channelNameMap() (map[uint]string, error) {
 	return out, nil
 }
 
-// BackfillUsageFromPG 用直连 PG 按天重建 [start, end) 的历史渠道消费。
+// BackfillUsageFromPG 用直连 PG 按天重建 [start, end) 的历史渠道消费（replace）。
 //
-// 与逐日 HTTP 补数等价，但只需两次查询（渠道名 + 一次按天汇总），不受请求数/超时限制。
-// 逐日以 replace 模式写入：先删当天再整批覆盖，因此可安全重复执行。
+// 逐日 replace：先删当天再整批覆盖，因此可安全重复执行。与逐日 HTTP 补数等价，
+// 但只需一条 SQL，不受请求数 / 超时限制。
+//
+// 注意：调用方应把 end 截到「现在」，且回填覆盖到当天时应把同步游标推进到当下，
+// 否则当天稍后的增量窗口会被当天已写入的 end_at 挡住（见 syncBackfillUsageHandler）。
 func (s *SyncService) BackfillUsageFromPG(ctx context.Context, start, end time.Time) (int, error) {
 	if s.cfg.PG == nil {
 		return 0, fmt.Errorf("未配置 pgDsn，无法从 PostgreSQL 回填消费")
 	}
-	days, err := s.cfg.PG.UsageByChannelDay(ctx, start, end)
-	if err != nil {
-		return 0, err
-	}
-	if len(days) == 0 {
-		return 0, nil
-	}
-	names, err := s.channelNameMap()
-	if err != nil {
-		return 0, err
-	}
-	byDay := make(map[string][]storage.ChannelUsageInput)
-	for _, d := range days {
-		dayStart, err := time.ParseInLocation("2006-01-02", d.Day, shanghaiZone())
-		if err != nil {
-			continue
-		}
-		byDay[d.Day] = append(byDay[d.Day], storage.ChannelUsageInput{
-			ChannelID: d.ChannelID, ChannelName: names[d.ChannelID],
-			Amount: d.Amount, StartAt: dayStart, EndAt: dayStart.Add(24*time.Hour - time.Second),
-		})
-	}
-	written := 0
-	for _, inputs := range byDay {
-		n, err := s.acc.SaveChannelUsageStats(inputs, "replace")
-		if err != nil {
-			return written, err
-		}
-		written += n
-	}
-	return written, nil
+	return s.syncUsageFromPG(ctx, start, end, "replace")
 }
 
 // SyncUserBalance 全量拉取站点用户余额，在 capturedAt 采集点落一份快照。

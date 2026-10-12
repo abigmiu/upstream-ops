@@ -12,9 +12,8 @@ import (
 // UsageSource 汇总渠道消费的数据源。生产实现是直连 new-api 的 PGUsageSource；
 // 抽成接口便于测试注入替身（无需真实 PG）。
 type UsageSource interface {
-	// UsageByChannel 返回 [start, end) 内各渠道的消费（USD）。
-	UsageByChannel(ctx context.Context, start, end time.Time) (map[uint]float64, error)
-	// UsageByChannelDay 返回 [start, end) 内按 (渠道, 上海日) 汇总的消费（USD），用于历史回填。
+	// UsageByChannelDay 返回 [start, end) 内按 (渠道, 上海日) 汇总的消费（USD）。
+	// 按天分组是刻意的：窗口可能跨天（增量追赶），逐日归类才不会把多天用量堆到某一天。
 	UsageByChannelDay(ctx context.Context, start, end time.Time) ([]ChannelUsageDay, error)
 	Close() error
 }
@@ -68,31 +67,8 @@ func (p *PGUsageSource) Close() error {
 	return p.db.Close()
 }
 
-// UsageByChannel 返回 [start, end) 内各渠道的消费（USD）。一条 SQL 覆盖全部渠道。
-func (p *PGUsageSource) UsageByChannel(ctx context.Context, start, end time.Time) (map[uint]float64, error) {
-	const q = `SELECT channel_id, SUM(quota) FROM logs
-	           WHERE type = $1 AND created_at >= $2 AND created_at < $3
-	           GROUP BY channel_id`
-	rows, err := p.db.QueryContext(ctx, q, consumeType, start.Unix(), end.Unix())
-	if err != nil {
-		return nil, fmt.Errorf("查询渠道消费: %w", err)
-	}
-	defer rows.Close()
-	out := make(map[uint]float64)
-	for rows.Next() {
-		var ch, quota int64
-		if err := rows.Scan(&ch, &quota); err != nil {
-			return nil, err
-		}
-		if ch <= 0 {
-			continue
-		}
-		out[uint(ch)] = float64(quota) / p.quotaPerUSD
-	}
-	return out, rows.Err()
-}
-
-// UsageByChannelDay 返回 [start, end) 内按 (渠道, 上海日) 汇总的消费（USD），用于历史回填。
+// UsageByChannelDay 返回 [start, end) 内按 (渠道, 上海日) 汇总的消费（USD）。
+// 一条 SQL 覆盖全部渠道与全部天，用于窗口同步与历史回填。
 func (p *PGUsageSource) UsageByChannelDay(ctx context.Context, start, end time.Time) ([]ChannelUsageDay, error) {
 	const q = `SELECT channel_id,
 	                  to_char(to_timestamp(created_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS day,
